@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import ConfigEditor from '../components/ConfigEditor';
+import ExtraRules from '../components/ExtraRules';
 import IssueList from '../components/IssueList';
+import QuickSettings from '../components/QuickSettings';
 import { createGame } from '../lib/games';
 import { db, errorText } from '../lib/supabase';
 import { gameConfigSchema, type GameConfig } from '../shared/config';
@@ -17,6 +19,7 @@ function presetConfig(id: string): GameConfig {
 
 export default function NewGamePage() {
   const navigate = useNavigate();
+  const custom = useLocation().pathname.endsWith('/eigenes');
   const [name, setName] = useState('');
   const [presetId, setPresetId] = useState('stadtabend_3h');
   const [baseline, setBaseline] = useState(() => presetConfig('stadtabend_3h'));
@@ -63,7 +66,7 @@ export default function NewGamePage() {
     try {
       const game = await createGame(
         name.trim(),
-        presetId,
+        custom ? 'eigenes' : presetId,
         result.config,
         startAt ? new Date(startAt).toISOString() : null,
       );
@@ -83,7 +86,11 @@ export default function NewGamePage() {
     <div className="app">
       <div className="topbar">
         <Link to="/" className="button ghost small">←</Link>
-        <h1>Spiel erstellen</h1>
+        <h1>{custom ? 'Eigenes Spiel' : 'Spiel erstellen'}</h1>
+      </div>
+      <div className="mode-switch" style={{ marginBottom: 12 }}>
+        <Link to="/neu" replace className={`button${custom ? '' : ' primary'}`}>Vorlage</Link>
+        <Link to="/neu/eigenes" replace className={`button${custom ? ' primary' : ''}`}>Alles selbst einstellen</Link>
       </div>
       <form className="stack" onSubmit={submit}>
         <label className="field">
@@ -105,44 +112,68 @@ export default function NewGamePage() {
           </label>
         )}
 
-        <h2>Voreinstellung</h2>
-        <div className="stack">
-          {PRESETS.map((p) => (
-            <button
-              type="button"
-              key={p.id}
-              className={`card preset${p.id === presetId ? ' selected' : ''}`}
-              onClick={() => pickPreset(p.id)}
-              aria-pressed={p.id === presetId}
-            >
-              <div className="row">
-                <strong className="spacer">{p.name}</strong>
-                <span className="badge">
-                  {p.suggested.players} Spieler / {p.suggested.hunters} Hunter
-                </span>
-              </div>
-              <div className="muted small">{p.description}</div>
-            </button>
-          ))}
-        </div>
-
-        <div className="card small">
-          <div>Dauer: {formatMinutes(config.game.duration_minutes)} ({config.game.days} Spieltage à {formatMinutes(config.game.day_length_minutes)})</div>
-          <div>Vorsprung: {formatMinutes(config.start.head_start_minutes)} · Ping alle {formatMinutes(config.ping.interval_minutes)}</div>
-          <div>
-            Speedhunts: {config.speedhunt.enabled ? `${config.speedhunt.quota_per_day.join('/')} am Tag 1, danach ${config.speedhunt.quota_default}, je ${config.speedhunt.queries} Abfragen` : 'aus'}
-          </div>
-        </div>
-
-        <IssueList issues={result.issues} />
-
-        <button type="button" onClick={() => setShowRules((s) => !s)}>
-          {showRules ? 'Regeln ausblenden' : 'Alle Regeln anpassen'}
-        </button>
-        {showRules && (
+        {custom ? (
           <>
-            {editError && <div className="notice error">{editError}</div>}
-            <ConfigEditor config={config} baseline={baseline} problemPaths={problemPaths} onChange={edit} />
+            <p className="muted small" style={{ margin: 0 }}>Startwerte von der Vorlage unten, alles lässt sich ändern.</p>
+            <label className="field">
+              Startwerte von
+              <select value={presetId} onChange={(e) => pickPreset(e.target.value)}>
+                {PRESETS.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </label>
+            <QuickSettings config={config} onChange={edit} />
+            <ExtraRules rules={config.extras.rules} onChange={(rules) => edit({ ...config, extras: { ...config.extras, rules } })} />
+            <IssueList issues={result.issues} />
+            <details className="section">
+              <summary>Alle weiteren Regeln ({'>'}150 Einstellungen)</summary>
+              <div>
+                {editError && <div className="notice error">{editError}</div>}
+                <ConfigEditor config={config} baseline={baseline} problemPaths={problemPaths} onChange={edit} />
+              </div>
+            </details>
+          </>
+        ) : (
+          <>
+          <h2>Voreinstellung</h2>
+          <div className="stack">
+            {PRESETS.map((p) => (
+              <button
+                type="button"
+                key={p.id}
+                className={`card preset${p.id === presetId ? ' selected' : ''}`}
+                onClick={() => pickPreset(p.id)}
+                aria-pressed={p.id === presetId}
+              >
+                <div className="row">
+                  <strong className="spacer">{p.name}</strong>
+                  <span className="badge">
+                    {p.suggested.players} Spieler / {p.suggested.hunters} Hunter
+                  </span>
+                </div>
+                <div className="muted small">{p.description}</div>
+              </button>
+            ))}
+          </div>
+
+          <div className="card small">
+            <div>Dauer: {formatMinutes(config.game.duration_minutes)} ({config.game.days} Spieltage à {formatMinutes(config.game.day_length_minutes)})</div>
+            <div>Vorsprung: {formatMinutes(config.start.head_start_minutes)} · Ping alle {formatMinutes(config.ping.interval_minutes)}</div>
+            <div>
+              Speedhunts: {config.speedhunt.enabled ? `${config.speedhunt.quota_per_day.join('/')} am Tag 1, danach ${config.speedhunt.quota_default}, je ${config.speedhunt.queries} Abfragen` : 'aus'}
+            </div>
+          </div>
+
+          <IssueList issues={result.issues} />
+
+          <button type="button" onClick={() => setShowRules((s) => !s)}>
+            {showRules ? 'Regeln ausblenden' : 'Alle Regeln anpassen'}
+          </button>
+          {showRules && (
+            <>
+              {editError && <div className="notice error">{editError}</div>}
+              <ConfigEditor config={config} baseline={baseline} problemPaths={problemPaths} onChange={edit} />
+            </>
+          )}
           </>
         )}
 

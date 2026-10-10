@@ -382,6 +382,12 @@ export const gameConfigSchema = z.object({
     })
     .default({})
     .describe('Konten'),
+  extras: z
+    .object({
+      rules: z.array(z.string().trim().min(1).max(300)).max(30).default([]).describe('Zusatzregeln (Text)'),
+    })
+    .default({})
+    .describe('Eigene Zusatzregeln'),
 });
 
 export type GameConfig = z.infer<typeof gameConfigSchema>;

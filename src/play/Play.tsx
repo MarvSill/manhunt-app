@@ -240,6 +240,12 @@ export default function PlayPage() {
           </div>
 
           <div style={{ display: tab === 'aktionen' ? 'block' : 'none' }}>
+            {(g.config.extras?.rules?.length ?? 0) > 0 && (
+              <details className="section">
+                <summary>Zusatzregeln ({g.config.extras.rules.length})</summary>
+                <div><ol className="extra-rules">{g.config.extras.rules.map((r, i) => <li key={i}>{r}</li>)}</ol></div>
+              </details>
+            )}
             {role === 'spieler' && <PlayerPanel s={s} now={now} act={act} pos={pos} pickFake={(itemId) => { setPick({ kind: 'fake', itemId }); setTab('karte'); }} />}
             {(role === 'hunter' || role === 'zentrale') && <HunterPanel s={s} now={now} act={act} pos={pos} />}
             {role === 'gm' && (

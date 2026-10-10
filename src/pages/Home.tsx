@@ -25,6 +25,9 @@ export default function HomePage() {
         <Link to="/neu" className="button primary block">
           Spiel erstellen
         </Link>
+        <Link to="/neu/eigenes" className="button block">
+          Eigenes Spiel (alles selbst einstellen)
+        </Link>
         <Link to="/beitreten" className="button block">
           Spiel beitreten
         </Link>

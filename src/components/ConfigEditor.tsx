@@ -17,7 +17,7 @@ function getValue(config: GameConfig, f: FieldMeta): unknown {
 }
 
 export default function ConfigEditor({ config, baseline, readOnly, problemPaths, onChange }: Props) {
-  const sections = useMemo(() => configSections(), []);
+  const sections = useMemo(() => configSections().filter((s) => s.section !== 'extras'), []);
   const [query, setQuery] = useState('');
   const q = query.trim().toLowerCase();
 
