@@ -80,3 +80,9 @@ Abweichungen von der Spezifikation und Annahmen, wo sie nichts festlegt.
   Bereits eingespielte Migrationen merkt sich die Tabelle `hm_migrations`.
 - Keine Bestätigungsmail bei der Registrierung (Spezifikation verlangt sie): Der Gratis-Mailversand von Supabase
   stellt nur an Team-Mitglieder zu. Mit eigenem SMTP wieder einschaltbar. „Passwort vergessen“ braucht ebenfalls SMTP.
+
+## Karte und Zonen (Migration 0008)
+- Spielfeld-Zonen haben Phasen statt nur Spieltage: `zone.shrink_every_minutes = 0` heisst eine Phase pro Spieltag, sonst alle X Minuten eine neue Phase. `day_index` einer Zone ist die Phase. Stand in `games.state_json` (`phase`, `next_phase_at`).
+- Der Editor führt Schritt für Schritt: Spielfeld (Kreis, Rechteck, eigene Form), Treffpunkt, HQ, Exit, Verkleinerung mit Vorschau, Gefahrenzonen, weitere Zonen.
+- Sektion, Startzone, Center, Kern, Aussen, Sicher und Sperrzone müssen im Spielfeld (Phase 1) liegen, ein Phasen-Spielfeld im vorherigen. Was hinausragt, wird beim Zeichnen zugeschnitten (Turf). Treffpunkt und Exit müssen im Feld liegen; `start_game` prüft das nochmals.
+- Sperrzonen haben eine Art (Strasse, Gleise, Gewässer …) und werden rot schraffiert mit Warnsymbol gezeigt. Vorschläge kommen aus OpenStreetMap (Overpass-API), Linien werden als Band mit Breite übernommen.

@@ -101,7 +101,8 @@ export const gameConfigSchema = z.object({
     .object({
       edge_tolerance_m: int(25, 0, 200, 'GPS-Toleranz am Rand (m)'),
       shrink_mode: choice(['manuell', 'auto', 'aus'], 'manuell', 'Spielfeld-Verkleinerung'),
-      auto_shrink_percent: int(20, 1, 80, 'Verkleinerung pro Spieltag (%)'),
+      auto_shrink_percent: int(20, 1, 80, 'Verkleinerung pro Phase (%)'),
+      shrink_every_minutes: int(0, 0, 1440, 'Phase alle (min, 0 = pro Spieltag)'),
       shrink_announce_minutes: int(180, 0, 1440, 'Vorankündigung Verkleinerung (min)'),
       shrink_grace_minutes: int(0, 0, 120, 'Übergangsfrist (min)'),
       release_on_catch: bool(false, 'Sektion wird bei Fang frei'),
