@@ -15,7 +15,7 @@ import {
   type RosterEntry,
 } from '../lib/games';
 import { api } from '../lib/engine';
-import { db, errorText } from '../lib/supabase';
+import { appUrl, db, errorText } from '../lib/supabase';
 import DeviceCheck from '../components/DeviceCheck';
 import { parseConfig } from '../shared/config';
 import { formatMinutes } from '../shared/format';
@@ -128,7 +128,7 @@ export default function GamePage() {
 
   async function share() {
     if (!game) return;
-    const url = `${window.location.origin}/beitreten/${game.code}`;
+    const url = appUrl(`/beitreten/${game.code}`);
     const text = `Spiel "${game.name}" beitreten: Code ${game.code}`;
     if (navigator.share) {
       try {

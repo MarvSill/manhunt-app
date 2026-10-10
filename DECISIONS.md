@@ -71,3 +71,12 @@ Abweichungen von der Spezifikation und Annahmen, wo sie nichts festlegt.
 - „Ausgeglichene“ Zufallsverteilung nach bisherigen Rollen braucht Spielhistorie (ab Schritt 8).
 - Benutzername ändern (alle 30 Tage), Konto löschen, Datenexport, Apple/Google-Login, Captcha: spätere Schritte.
 - Serverseitige Prüfung der Konfiguration beim Start kommt mit der Engine (Schritt 3).
+
+## Betrieb
+
+- Hosting auf GitHub Pages statt Vercel: braucht kein weiteres Konto. Dafür muss das Repository öffentlich sein
+  (im Code stehen keine Geheimnisse; der Publishable key landet ohnehin im Browser).
+- Supabase wird per Access Token aus der GitHub Action eingerichtet (`scripts/supabase-setup.mjs`).
+  Bereits eingespielte Migrationen merkt sich die Tabelle `hm_migrations`.
+- Keine Bestätigungsmail bei der Registrierung (Spezifikation verlangt sie): Der Gratis-Mailversand von Supabase
+  stellt nur an Team-Mitglieder zu. Mit eigenem SMTP wieder einschaltbar. „Passwort vergessen“ braucht ebenfalls SMTP.

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { db, errorText } from '../lib/supabase';
+import { appUrl, db, errorText } from '../lib/supabase';
 
 type Mode = 'login' | 'register' | 'forgot';
 
@@ -36,7 +36,7 @@ export default function LoginPage() {
           setInfo('Fast geschafft: Wir haben dir einen Bestätigungslink geschickt. Öffne ihn, dann bist du angemeldet.');
         }
       } else {
-        const { error } = await auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+        const { error } = await auth.resetPasswordForEmail(email, { redirectTo: appUrl() });
         if (error) throw error;
         setInfo('Falls es ein Konto mit dieser E-Mail gibt, ist ein Link zum Zurücksetzen unterwegs.');
       }

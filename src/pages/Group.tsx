@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { STATUS_LABELS } from '../lib/games';
-import { db, errorText } from '../lib/supabase';
+import { appUrl, db, errorText } from '../lib/supabase';
 import { MessageList } from '../play/Chat';
 
 interface Group { id: string; name: string; description: string | null; invite_code: string; owner_id: string; members_can_create_games: boolean }
@@ -50,7 +50,7 @@ export default function GroupPage() {
   const admin = myRole === 'besitzer' || myRole === 'admin';
 
   async function share() {
-    const url = `${window.location.origin}/gruppe/${g!.invite_code}`;
+    const url = appUrl(`/gruppe/${g!.invite_code}`);
     const text = `Tritt der Gruppe "${g!.name}" bei: ${url}`;
     if (navigator.share) {
       try { await navigator.share({ title: 'Hunt Mode', text, url }); return; } catch { /* abgebrochen */ }

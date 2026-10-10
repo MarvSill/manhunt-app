@@ -1,0 +1,64 @@
+# Baut die App und stellt sie auf GitHub Pages. Richtet vorher Supabase automatisch ein
+# (Projekt, Datenbank, Anmeldung). Braucht nur das Secret SUPABASE_ACCESS_TOKEN.
+name: App veröffentlichen
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    # Alle 3 Tage: hält das kostenlose Supabase-Projekt wach (pausiert sonst nach 7 Tagen).
+    - cron: '17 5 */3 * *'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Tests
+        run: npm test
+      - name: Supabase einrichten
+        id: supabase
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+        run: |
+          export SITE_URL="https://${OWNER,,}.github.io/${REPO}/"
+          node scripts/supabase-setup.mjs
+      - name: App bauen
+        env:
+          VITE_BASE: /${{ github.event.repository.name }}/
+          VITE_SUPABASE_URL: ${{ steps.supabase.outputs.url }}
+          VITE_SUPABASE_ANON_KEY: ${{ steps.supabase.outputs.key }}
+        run: |
+          npm run build
+          # Direktaufrufe wie /gruppe/abc landen ebenfalls in der App.
+          cp dist/index.html dist/404.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

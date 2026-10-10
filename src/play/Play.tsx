@@ -54,7 +54,7 @@ export default function PlayPage() {
     if (document.visibilityState !== 'visible' && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       void navigator.serviceWorker?.getRegistration().then((reg) => {
         for (const n of list) {
-          const opts = { body: n.body, tag: `hm-${n.id}`, icon: '/icon.svg', requireInteraction: n.priority === 'kritisch' };
+          const opts = { body: n.body, tag: `hm-${n.id}`, icon: `${import.meta.env.BASE_URL}icon.svg`, requireInteraction: n.priority === 'kritisch' };
           if (reg) void reg.showNotification(n.title, opts);
           else new Notification(n.title, opts);
         }

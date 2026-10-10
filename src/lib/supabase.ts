@@ -24,3 +24,8 @@ export function errorText(error: unknown): string {
   if (msg.includes('Password should be')) return 'Das Passwort ist zu schwach.';
   return msg;
 }
+
+/** Absolute Adresse innerhalb der App, auch wenn sie unter einem Unterpfad läuft. */
+export function appUrl(path = '/'): string {
+  return `${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}${path}`;
+}

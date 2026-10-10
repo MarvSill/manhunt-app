@@ -7,7 +7,7 @@ Spezifikation „Manhunt App“ (v1.1). Arbeitstitel „Hunt Mode“, weil der N
 
 ## Was die App kann
 
-- Konten mit E-Mail-Bestätigung, Profil mit Notfallkontakt, Gruppen (Crews) mit Einladungslink und Chat
+- Konten mit E-Mail und Passwort, Profil mit Notfallkontakt, Gruppen (Crews) mit Einladungslink und Chat
 - Vollständiges Regelwerk (Kapitel 8) mit 6 Presets, Regel-Prüfung (Kapitel 25), Regel-Editor mit Protokoll
 - Spiel erstellen, per Code/Link beitreten, Live-Lobby, Rollen, Gerätecheck
 - **Karten-Editor**: Spielfeld (auch pro Spieltag), Sektionen, Center/Kern/Aussen mit eigenem Ping-Intervall,
@@ -24,42 +24,37 @@ Spezifikation „Manhunt App“ (v1.1). Arbeitstitel „Hunt Mode“, weil der N
 
 Grenzen und Entscheidungen stehen in [DECISIONS.md](DECISIONS.md).
 
-## Einrichten (einmalig)
+## Einrichten (einmalig, fast alles automatisch)
 
-### 1. Datenbank (Supabase)
+Die GitHub Action [`App veröffentlichen`](.github/workflows/deploy.yml) erledigt alles selbst:
+Supabase-Projekt `hunt-mode` in Frankfurt anlegen, Datenbank einspielen (PostGIS, pg_cron, Speicher
+für Fotos), Anmeldung einstellen, App bauen und auf GitHub Pages stellen. Sie läuft bei jedem Push
+auf `main`, von Hand unter **Actions**, und alle 3 Tage (hält das Gratis-Projekt wach).
 
-1. Im Supabase-Dashboard dein Projekt öffnen, links **SQL Editor** > **New query**.
-2. Den ganzen Inhalt von [`supabase/alles_in_einem.sql`](supabase/alles_in_einem.sql) einfügen und **Run** drücken.
-   (Das sind alle Dateien aus `supabase/migrations/` in der richtigen Reihenfolge. Wer schon
-   `0001_fundament.sql` ausgeführt hat, führt stattdessen nur `0002` bis `0007` nacheinander aus.)
-3. **Authentication** > **Sign In / Providers** > **Email**: „Confirm email“ an lassen, Mindestlänge Passwort auf **10** setzen.
-4. **Authentication** > **URL Configuration**: Bei **Site URL** die Adresse der App eintragen
-   (z. B. `https://hunt-mode.vercel.app`) und unter **Redirect URLs** dieselbe Adresse mit `/**` am Ende.
+Von Hand nötig sind nur:
 
-Das Skript schaltet selbst PostGIS (Karten), pg_cron (Zeitplan der Engine, alle 15 s) und den
-Speicher-Ordner `beweise` (Fotos) ein. Falls es bei `pg_cron` meckert: **Database** > **Extensions** >
-`pg_cron` aktivieren und das Skript nochmals laufen lassen.
+1. **Repository öffentlich machen** (GitHub Pages ist für private Repositories kostenpflichtig):
+   **Settings** > **General** > ganz unten **Change visibility** > **Public**.
+2. **Pages einschalten**: **Settings** > **Pages** > bei **Source** „GitHub Actions“ wählen.
+3. **Supabase-Token**: auf supabase.com mit GitHub anmelden, oben rechts Profil > **Account preferences**
+   > **Access Tokens** > **Generate new token**.
+4. Das Token in GitHub eintragen: **Settings** > **Secrets and variables** > **Actions** >
+   **New repository secret**, Name `SUPABASE_ACCESS_TOKEN`.
 
-Hinweis: Der eingebaute E-Mail-Versand von Supabase schickt nur wenige Mails pro Stunde.
-Für mehr Leute später einen eigenen SMTP-Dienst (z. B. Resend) unter
-**Authentication** > **Emails** > **SMTP Settings** eintragen.
+Danach unter **Actions** > **App veröffentlichen** > **Run workflow**. Die App ist dann unter
+`https://<github-name>.github.io/manhunt-app/` erreichbar. Auf dem Handy öffnen und
+„Zum Home-Bildschirm hinzufügen“: dann läuft sie wie eine App.
 
-### 2. Zugangsdaten
+Konten brauchen keine Bestätigungsmail: Der Gratis-Mailversand von Supabase erreicht nur
+Team-Mitglieder. Wer Bestätigungsmails will, trägt einen SMTP-Dienst ein (Supabase >
+**Authentication** > **Emails** > **SMTP Settings**) und schaltet „Confirm email“ wieder ein.
 
-Im Dashboard unter **Project Settings** > **API Keys** (bzw. **Data API**) findest du:
+### Von Hand (ohne Action)
 
-- **Project URL** → `VITE_SUPABASE_URL`
-- **Publishable key** (oder „anon public“) → `VITE_SUPABASE_ANON_KEY`
-
-Niemals den `service_role`- bzw. Secret-Key in die App eintragen.
-
-### 3. Hosting (Vercel, kostenlos)
-
-1. Auf vercel.com mit GitHub anmelden, **Add New** > **Project**, Repository `manhunt-app` importieren.
-2. Framework „Vite“ wird erkannt. Unter **Environment Variables** die zwei Werte aus Schritt 2 eintragen.
-3. **Deploy**. Die Adresse, die Vercel anzeigt, in Supabase als Site URL eintragen (Schritt 1.4).
-
-Auf dem Handy die Seite öffnen und „Zum Home-Bildschirm hinzufügen“: dann läuft sie wie eine App.
+Inhalt von [`supabase/alles_in_einem.sql`](supabase/alles_in_einem.sql) im Supabase **SQL Editor**
+ausführen, unter **Authentication** Site URL und Redirect URLs (`<adresse>/**`) setzen, und die App
+mit `VITE_SUPABASE_URL` und `VITE_SUPABASE_ANON_KEY` (Publishable key, nie den Secret-Key) bauen,
+z. B. auf Vercel. Läuft die App unter einem Unterpfad, zusätzlich `VITE_BASE=/pfad/` setzen.
 
 ## Entwickeln
 
