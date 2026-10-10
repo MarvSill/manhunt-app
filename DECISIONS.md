@@ -37,6 +37,34 @@ Abweichungen von der Spezifikation und Annahmen, wo sie nichts festlegt.
 - Ein Rollenwechsel durch den Host setzt „bereit“ zurück, damit jede Person ihre Rolle bestätigt.
 - Beitreten verlangt bestätigte E-Mail, vollständiges Profil und Notfallkontakt (Kapitel 20.1, für alle Rollen).
 
+## Engine (Schritte 3 bis 8)
+
+- Die ganze Spiellogik läuft in der Datenbank (PL/pgSQL): `tick_game()` wird von pg_cron alle 15 s,
+  bei jedem Standort-Update und von offenen Apps aufgerufen. Damit muss niemand einen Server betreiben,
+  und kein Handy kann Regeln umgehen. Clients schreiben nur über geprüfte Funktionen.
+- Sichtbarkeit (Kapitel 5.2) entscheidet eine Funktion `game_state()`: Spieler sehen nur sich selbst,
+  die Taskforce Pings und Live-Fenster, die Spielleitung alles inklusive echter Position hinter Fake-Pings.
+- Spielzeit = echte Zeit + Vorlauf. Im Probelauf verschiebt „Vorspulen“ den Vorlauf in 5-Minuten-Schritten,
+  damit alle Timer in der richtigen Reihenfolge feuern; letzte Positionen gelten dabei als aktuell.
+- Fang-Code: 6 Ziffern, alle 30 s neu, vorheriger Code bleibt 30 s gültig. Ohne Kamera: Code eintippen.
+- Automatische Spielleitung entscheidet im Zweifel für die Spieler (Challenge-Fotos zählen, bestrittener
+  Fang gilt nur bei passendem GPS-Abstand). Mit menschlicher Spielleitung wartet eine Strafe nach einer
+  Erklärung auf die Entscheidung.
+- Punkte (Siegmodus „punkte“): 10 pro überlebte Stunde, 50 für den Exit, 20 pro geschaffte Challenge;
+  Hunter bekommen ihr Kopfgeld. Annahme, die Spezifikation legt keine Formel fest.
+- Joker „nach Wahl“: der Spieler wählt beim Einsetzen aus den erlaubten Typen.
+
+## Grenzen der Web-App (bekannt)
+
+- Der Browser sendet den Standort nur, solange die App offen und sichtbar ist (Bildschirm bleibt dank
+  Wake Lock an). Echte Hintergrund-Ortung und Push bei geschlossener App braucht die native Verpackung
+  (Capacitor), die mit demselben Code möglich ist. Meldungen kommen bei offener App mit Ton/Vibration
+  und als Systembenachrichtigung.
+- NFC, Bluetooth-Fang und Handschellen sind in den Regeln wählbar, aber nur QR und Bestätigung sind gebaut.
+- Kartenkacheln kommen von OpenStreetMap und werden für Funklöcher zwischengespeichert; für viele Spiele
+  später einen eigenen Kachel-Anbieter nehmen (OSM-Nutzungsregeln).
+- Nur Deutsch; die Texte sind für weitere Sprachen nicht ausgelagert.
+
 ## Noch offen in Schritt 1
 
 - Balance-Einschätzung (Kapitel 25, SOLL) braucht die Spielfeldfläche, kommt mit der Karte.

@@ -4,6 +4,9 @@ import { formatMinutes } from '../shared/format';
 import CatchCode from './CatchCode';
 import { Confirm, nameOf, Section, type PanelProps } from './common';
 
+const PROOF_LABELS: Record<string, string> = { geofence: 'am Ort sein', code: 'Code eingeben', foto: 'Foto', spielleitung: 'Spielleitung entscheidet' };
+const REWARD_LABELS: Record<string, string> = { bonus_fake_ping: 'Fake-Ping', bonus_hotel: 'Hotel', budget: 'Budget', joker: 'Catch-Free-Joker' };
+
 export default function PlayerPanel({ s, now, act, pickFake }: PanelProps & { pickFake: (itemId: string) => void }) {
   const cfg = s.game.config;
   const me = s.me;
@@ -183,7 +186,7 @@ export default function PlayerPanel({ s, now, act, pickFake }: PanelProps & { pi
               <div key={c.id} className="stack sub">
                 <strong>{c.title}</strong>
                 <span className="small">{c.description}</span>
-                <span className="muted small">{clock(c.starts_at)}–{clock(c.ends_at)} · Beweis: {c.proof_type} · Belohnung: {c.reward_type.replace(/_/g, ' ')}</span>
+                <span className="muted small">{clock(c.starts_at)}–{clock(c.ends_at)} · Beweis: {PROOF_LABELS[c.proof_type] ?? c.proof_type} · Belohnung: {REWARD_LABELS[c.reward_type] ?? c.reward_type}</span>
                 {mine?.result === 'erfolgreich' ? <span className="badge green">Geschafft</span> : mine?.result === 'eingereicht' ? <span className="badge">Eingereicht, wird geprüft</span> : (
                   <div className="row">
                     {!mine && <button className="small" onClick={() => act(() => api.challengeJoin(c.id), 'Angemeldet.')}>Teilnehmen</button>}

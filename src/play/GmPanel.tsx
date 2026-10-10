@@ -130,7 +130,7 @@ export default function GmPanel(props: PanelProps & { pickZone: () => void; pick
                 </div>
               </div>
               {p.role === 'spieler' && live && (
-                <select aria-label={`Aktion für ${p.name}`} value="" onChange={(e) => {
+                <select aria-label={`Aktion für ${p.name}`} value="" style={{ width: 120, flexShrink: 0 }} onChange={(e) => {
                   const v = e.target.value;
                   if (v === 'ping') void act(() => api.gmPing(g.id, p.id), 'Sonder-Ping gesendet.');
                   else if (v === 'kontakt') void act(async () => {

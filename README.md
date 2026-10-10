@@ -5,27 +5,40 @@ Spieler fliehen durch die Stadt, eine Taskforce jagt sie. Grundlage ist die
 Spezifikation „Manhunt App“ (v1.1). Arbeitstitel „Hunt Mode“, weil der Name
 „Manhunt“ der Serie gehört (Spezifikation Kapitel 16).
 
-## Stand: Schritt 1 (Fundament)
+## Was die App kann
 
-- Registrierung mit E-Mail-Bestätigung, Anmeldung, Passwort vergessen
-- Profil mit Benutzername, Altersbestätigung, Notfallkontakt, Einwilligungen
-- Vollständiges Regelwerk (alle Parameter aus Kapitel 8) mit den 6 Presets aus Kapitel 9
-- Regel-Prüfung aus Kapitel 25 (Fehler blockieren den Start, Warnungen nicht)
-- Spiel erstellen, mit 6-stelligem Code oder Link `/beitreten/<code>` beitreten
-- Lobby mit Live-Teilnehmerliste, Rollen (Host vergibt, Zufall oder Wunschrolle), Bereit-Meldung
-- Regel-Editor mit Suche; jede Änderung wird protokolliert
+- Konten mit E-Mail-Bestätigung, Profil mit Notfallkontakt, Gruppen (Crews) mit Einladungslink und Chat
+- Vollständiges Regelwerk (Kapitel 8) mit 6 Presets, Regel-Prüfung (Kapitel 25), Regel-Editor mit Protokoll
+- Spiel erstellen, per Code/Link beitreten, Live-Lobby, Rollen, Gerätecheck
+- **Karten-Editor**: Spielfeld (auch pro Spieltag), Sektionen, Center/Kern/Aussen mit eigenem Ping-Intervall,
+  Sperrzonen, sichere Zonen, Exit-Kandidaten, HQ; Ortssuche, GeoJSON-Import/-Export, automatische Verkleinerung
+- **Spiel-Engine auf dem Server** (läuft alle 15 s, auch wenn niemand die App offen hat):
+  Vorsprung, Spieltage, Silent-Pings mit Frische-Regel, Speedhunts mit allen Einschränkungen, LEO,
+  Fang per rotierendem QR-Code oder Bestätigung, Ausserhalb-Zeit, Sperrzonen, ÖV-Pflicht und Erkennung,
+  Verschanzen, Teambildungs-Alarm, Budget mit Kauf-Ping, Joker und Boni (inkl. Fake-Ping, Hotel),
+  Challenges, Verstösse mit Eskalation, Notfall, Pause, Exitpoint, Spielende und Sieger
+- **Ansichten** für Spieler, Taskforce (Hunter/Zentrale), Spielleitung und Zuschauer: Live-Karte,
+  Meldungen mit Ton/Vibration, Chat-Kanäle
+- **Probelauf**: Spiel mit Vorspul-Knöpfen (+1/+5/+15/+60 min), um alles in wenigen Minuten auszuprobieren
+- Ergebnis-Bildschirm mit Wiederholung (Zeitschieber über alle Spuren und Pings)
 
-Den Bauplan aller Schritte findest du in [DECISIONS.md](DECISIONS.md).
+Grenzen und Entscheidungen stehen in [DECISIONS.md](DECISIONS.md).
 
 ## Einrichten (einmalig)
 
 ### 1. Datenbank (Supabase)
 
 1. Im Supabase-Dashboard dein Projekt öffnen, links **SQL Editor** > **New query**.
-2. Den ganzen Inhalt von [`supabase/migrations/0001_fundament.sql`](supabase/migrations/0001_fundament.sql) einfügen und **Run** drücken.
+2. Den ganzen Inhalt von [`supabase/alles_in_einem.sql`](supabase/alles_in_einem.sql) einfügen und **Run** drücken.
+   (Das sind alle Dateien aus `supabase/migrations/` in der richtigen Reihenfolge. Wer schon
+   `0001_fundament.sql` ausgeführt hat, führt stattdessen nur `0002` bis `0007` nacheinander aus.)
 3. **Authentication** > **Sign In / Providers** > **Email**: „Confirm email“ an lassen, Mindestlänge Passwort auf **10** setzen.
 4. **Authentication** > **URL Configuration**: Bei **Site URL** die Adresse der App eintragen
    (z. B. `https://hunt-mode.vercel.app`) und unter **Redirect URLs** dieselbe Adresse mit `/**` am Ende.
+
+Das Skript schaltet selbst PostGIS (Karten), pg_cron (Zeitplan der Engine, alle 15 s) und den
+Speicher-Ordner `beweise` (Fotos) ein. Falls es bei `pg_cron` meckert: **Database** > **Extensions** >
+`pg_cron` aktivieren und das Skript nochmals laufen lassen.
 
 Hinweis: Der eingebaute E-Mail-Versand von Supabase schickt nur wenige Mails pro Stunde.
 Für mehr Leute später einen eigenen SMTP-Dienst (z. B. Resend) unter
@@ -56,6 +69,7 @@ cp .env.example .env.local   # Werte eintragen
 npm run dev                  # http://localhost:5173
 npm test                     # Regel-Tests
 npm run build                # Typprüfung und Produktions-Build
+npm run sql                  # supabase/alles_in_einem.sql neu erzeugen
 ```
 
 Lokal mit eigener Datenbank: `npx supabase start` (braucht Docker) wendet die Migrationen an;
@@ -67,5 +81,6 @@ Bestätigungs-Mails landen dann in Mailpit unter http://127.0.0.1:54324.
 | --- | --- |
 | `src/shared/` | Regelwerk ohne UI: Konfigurationsschema, Presets, Prüfungen, Rollenverteilung (mit Tests) |
 | `src/lib/` | Supabase-Anbindung, Anmeldung, Spiel-Aktionen |
-| `src/pages/`, `src/components/` | Bildschirme |
-| `supabase/migrations/` | Datenbank: Tabellen, Rechte (RLS), Funktionen |
+| `src/pages/`, `src/components/` | Bildschirme (Start, Lobby, Regeln, Karten-Editor, Gruppen) |
+| `src/play/` | Laufendes Spiel: Karte, Spieler-, Taskforce- und Spielleitungs-Ansicht, Chat, Ergebnis |
+| `supabase/migrations/` | Datenbank: Tabellen, Rechte (RLS), Spiel-Engine (`0004`), Aktionen (`0005`), Spielstand je Rolle (`0006`), Zeitplan (`0007`) |
