@@ -3,13 +3,13 @@ import '@geoman-io/leaflet-geoman-free';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { esc, zoneBadge, zoneStyle } from '../components/MapView';
 import { api, ZONE_INFO, ZONE_KINDS, type MapFeature, type ZoneKind } from '../lib/engine';
 import {
-  areaKm2, bandFromLine, centerOf, checkMap, clipTo, fieldOfPhase, INSIDE_FIELD, outsideShare, pointInside,
-  recommendedKm2PerPlayer, RESTRICTED_TYPES, restrictedInfo, shrinkArea, type Area,
+  areaKm2, bandFromLine, centerOf, checkMap, circleWithArea, clipTo, fieldOfPhase, INSIDE_FIELD, middleOf, outsideShare, pointAtDistance, pointInside,
+  recommendedKm2PerPlayer, RESTRICTED_TYPES, restrictedInfo, shrinkArea, spreadPoints, unionAll, type Area,
 } from '../lib/geo';
 import { diffConfig, getGame, updateConfig, type Game } from '../lib/games';
 import { suggestHazards, type HazardSuggestion } from '../lib/hazards';
@@ -75,6 +75,8 @@ export default function MapEditorPage() {
   const [hazardBusy, setHazardBusy] = useState(false);
   const [lineWidth, setLineWidth] = useState(30);
   const [restrictedType, setRestrictedType] = useState('gleise');
+  const [stepIdx, setStepIdx] = useState(0);
+  const stepPicked = useRef(false);
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const group = useRef<L.FeatureGroup | null>(null);
@@ -199,6 +201,18 @@ export default function MapEditorPage() {
     };
   }, [gameId, addItem]);
 
+  // Beim Öffnen beim ersten offenen Schritt beginnen.
+  useEffect(() => {
+    if (!loaded || !config || stepPicked.current) return;
+    stepPicked.current = true;
+    const f = itemsRef.current.map((x) => x.feature);
+    const has = (k: ZoneKind) => f.some((x) => x.properties.kind === k);
+    const exit = config.exit.enabled;
+    const order: boolean[] = [!!fieldOfPhase(f, 1), has('treffpunkt'), has('hq'), ...(exit ? [has('exit')] : [])];
+    const open = order.findIndex((d) => !d);
+    setStepIdx(open >= 0 ? open : (exit ? 8 : 7) - 1);
+  }, [loaded, config]);
+
   // Symbole auf Gefahren- und Schutzzonen
   useEffect(() => {
     const b = badges.current;
@@ -312,8 +326,11 @@ export default function MapEditorPage() {
     }
     const it = addItem(f);
     setItems((prev) => [...prev, it]);
-    setSelected(it.key);
     setDirty(true);
+    // Pflicht-Schritte: nach dem Setzen gleich weiter zum nächsten Schritt.
+    if (p.kind === 'spielfeld' && !p.phase && !field1) setStepIdx(1);
+    if (p.kind === 'treffpunkt') setStepIdx(2);
+    if (p.kind === 'hq') setStepIdx(3);
   };
 
   function startDraw(p: Pending) {
@@ -520,6 +537,80 @@ export default function MapEditorPage() {
     }
   }
 
+  /** Punkt (Treffpunkt, HQ, Exit) setzen; Treffpunkt und HQ gibt es nur einmal. */
+  function placePoints(kind: ZoneKind, coords: GeoJSON.Position[], radius: number) {
+    const replace = kind === 'treffpunkt' || kind === 'hq';
+    if (replace) for (const old of itemsRef.current.filter((x) => x.feature.properties.kind === kind)) group.current?.removeLayer(old.layer);
+    const added = coords.map((c) => addItem({ type: 'Feature', geometry: { type: 'Point', coordinates: c }, properties: { kind, name: '', radius_m: radius } }));
+    const next = [...itemsRef.current.filter((x) => !(replace && x.feature.properties.kind === kind)), ...added];
+    itemsRef.current = next;
+    setItems(next);
+    setDirty(true);
+  }
+
+  const blockedArea = () => unionAll(itemsRef.current.map((x) => x.feature).filter((f) => f.properties.kind === 'sperrzone' && isArea(f)).map(asArea));
+  const meetPoint = () => {
+    const m = itemsRef.current.find((x) => x.feature.properties.kind === 'treffpunkt' && x.feature.geometry.type === 'Point');
+    return m ? (m.feature.geometry as GeoJSON.Point).coordinates : null;
+  };
+
+  /** Spielfeld als Kreis mit gewünschter Fläche in der Kartenmitte. */
+  function quickField(km2: number) {
+    const m = map.current;
+    if (!m) return;
+    const c = m.getCenter();
+    for (const old of itemsRef.current.filter((x) => x.feature.properties.kind === 'spielfeld' && !x.feature.properties.day_index)) group.current?.removeLayer(old.layer);
+    const shape = circleWithArea([c.lng, c.lat], km2);
+    const it = addItem({ type: 'Feature', geometry: shape.geometry, properties: { kind: 'spielfeld', name: 'Spielfeld' } });
+    const next = [...itemsRef.current.filter((x) => !(x.feature.properties.kind === 'spielfeld' && !x.feature.properties.day_index)), it];
+    itemsRef.current = next;
+    setItems(next);
+    setDirty(true);
+    m.fitBounds((it.layer as L.Polygon).getBounds(), { padding: [20, 20] });
+    setMsg({ ok: true, text: 'Spielfeld erstellt. Du kannst es antippen und die Ecken verschieben.' });
+    setStepIdx(1);
+  }
+
+  function autoMeet(): GeoJSON.Position | null {
+    const f = fieldOfPhase(itemsRef.current.map((x) => x.feature), 1);
+    if (!f) return null;
+    const pt = middleOf(f);
+    placePoints('treffpunkt', [pt], 30);
+    return pt;
+  }
+
+  function autoHq(meet?: GeoJSON.Position | null) {
+    const f = fieldOfPhase(itemsRef.current.map((x) => x.feature), 1);
+    const from = meet ?? meetPoint() ?? (f ? middleOf(f) : null);
+    if (!from || !config) return;
+    placePoints('hq', [pointAtDistance(from, config.start.hq_min_distance_m + 50, f, blockedArea())], 100);
+  }
+
+  function autoExits(n: number, meet?: GeoJSON.Position | null) {
+    const feats = itemsRef.current.map((x) => x.feature);
+    const f = fieldOfPhase(feats, phases) ?? fieldOfPhase(feats, 1);
+    if (!f) return;
+    for (const old of itemsRef.current.filter((x) => x.feature.properties.kind === 'exit')) group.current?.removeLayer(old.layer);
+    itemsRef.current = itemsRef.current.filter((x) => x.feature.properties.kind !== 'exit');
+    const from = meet ?? meetPoint();
+    placePoints('exit', spreadPoints(f, n, from ? [from] : [], blockedArea()), 30);
+  }
+
+  function autoPoints() {
+    const meet = autoMeet();
+    autoHq(meet);
+    if (config?.exit.enabled) autoExits(3, meet);
+    setMsg({ ok: true, text: 'Treffpunkt, HQ' + (config?.exit.enabled ? ' und 3 Exit-Kandidaten' : '') + ' gesetzt. Zum Verschieben antippen und ziehen.' });
+    setStepIdx(config?.exit.enabled ? 4 : 3);
+  }
+
+  function goStep(i: number) {
+    cancelDraw();
+    setSelected(null);
+    setMsg(null);
+    setStepIdx(Math.max(0, i));
+  }
+
   if (!game || !config) {
     return <div className="app">{msg ? <div className="notice error">{msg.text}</div> : <span className="muted">Lade …</span>}</div>;
   }
@@ -538,6 +629,27 @@ export default function MapEditorPage() {
   const sticking = field1 ? items.filter((it) => INSIDE_FIELD.includes(it.feature.properties.kind) && isArea(it.feature) && outsideShare(asArea(it.feature), field1) > 0.01) : [];
   const unitLabel = config.zone.shrink_every_minutes > 0 ? 'Phase' : 'Spieltag';
   const draw = (p: Pending) => () => startDraw(p);
+  const others: ZoneKind[] = ['sicher', 'kern', 'aussen', 'center', 'sektion', 'startzone'];
+  const steps: { id: string; icon: string; title: string; text: string; done: boolean; optional?: boolean }[] = [
+    { id: 'feld', icon: '🟩', title: 'Spielfeld', text: 'Der Bereich, in dem gespielt wird. Alle anderen Zonen liegen darin.', done: !!field1 },
+    { id: 'treff', icon: '📍', title: 'Treffpunkt', text: 'Hier sammeln sich alle vor dem Start. Muss im Spielfeld liegen.', done: has('treffpunkt') },
+    { id: 'hq', icon: '🚓', title: 'HQ', text: `Hier warten die Hunter während des Vorsprungs. Mindestens ${config.start.hq_min_distance_m} m vom Treffpunkt entfernt.`, done: has('hq') },
+    ...(config.exit.enabled ? [{ id: 'exit', icon: '🏁', title: 'Exit', text: 'Mehrere Kandidaten möglich. Einer wird zufällig gewählt und erst gegen Schluss verraten.', done: has('exit') }] : []),
+    { id: 'klein', icon: '⏳', title: 'Kleiner werden', text: 'Soll das Spielfeld im Lauf des Spiels kleiner werden? Neue Grenzen werden vorher angekündigt und gestrichelt gezeigt.', done: shrink !== 'aus', optional: true },
+    { id: 'gefahr', icon: '⚠️', title: 'Gefahren', text: 'Orte, die nie betreten werden dürfen: Autobahn, Gleise, Gewässer, Schulen, Baustellen. Sie werden rot schraffiert mit Warnsymbol gezeigt, und Spieler werden beim Annähern gewarnt.', done: has('sperrzone'), optional: true },
+    { id: 'mehr', icon: '🧩', title: 'Mehr Zonen', text: 'Schutzzonen, Kern-Gebiete und mehr. Alle liegen im Spielfeld; was hinausragt, wird abgeschnitten.', done: others.some(has), optional: true },
+    { id: 'fertig', icon: '✅', title: 'Prüfen', text: 'Hier siehst du, ob die Karte bereit ist.', done: !issues.some((i) => i.level === 'error') },
+  ];
+  const cur = steps[Math.min(stepIdx, steps.length - 1)];
+  const sizes = (() => {
+    const n = Math.max(2, players);
+    return [
+      { label: 'Klein', km2: n * rec[0] },
+      { label: 'Mittel', km2: n * ((rec[0] + rec[1]) / 2), recommended: true },
+      { label: 'Gross', km2: n * rec[1] },
+    ];
+  })();
+  const legend = (['spielfeld', 'sperrzone', 'sicher', 'kern', 'treffpunkt', 'hq', 'exit'] as ZoneKind[]).filter((k) => k === 'spielfeld' || has(k));
 
   return (
     <div className="app wide map-editor">
@@ -557,7 +669,7 @@ export default function MapEditorPage() {
       )}
 
       <div className="map-wrap">
-        <div ref={el} className="map" style={{ height: '55dvh' }} />
+        <div ref={el} className="map" style={{ height: '48dvh' }} />
         {pending && (
           <div className="draw-hint">
             <strong>{ICON[pending.kind]} {pending.kind === 'spielfeld' && pending.phase && pending.phase > 1 ? `Spielfeld ${unitLabel} ${pending.phase}` : ZONE_INFO[pending.kind].label}</strong>
@@ -569,6 +681,12 @@ export default function MapEditorPage() {
           </div>
         )}
       </div>
+      <div className="legend">
+        {legend.map((k) => (
+          <span key={k}><i className={`swatch${k === 'sperrzone' ? ' danger' : ''}`} style={{ background: k === 'sperrzone' ? undefined : ZONE_INFO[k].color }} />{ZONE_INFO[k].label}</span>
+        ))}
+        {shrink !== 'aus' && phases > 1 && <span><i className="swatch dashed" />spätere Grenze</span>}
+      </div>
       <div className="muted small" style={{ margin: '6px 0' }}>
         {km2 > 0 ? `Spielfeld ${km2.toFixed(2)} km² · ${(km2 / Math.max(1, players)).toFixed(2)} km² pro Spieler (empfohlen ${rec[0]}–${rec[1]})` : 'Noch kein Spielfeld.'}
       </div>
@@ -579,31 +697,66 @@ export default function MapEditorPage() {
       )}
 
       {editable && (
-        <div className="stack">
-          <Step n={1} done={!!field1} title="Spielfeld" text="Der Bereich, in dem gespielt wird. Alle anderen Zonen liegen darin.">
-            <div className="tool-row">
-              <button onClick={draw({ kind: 'spielfeld', tool: 'Circle' })}>◯ Kreis</button>
-              <button onClick={draw({ kind: 'spielfeld', tool: 'Rectangle' })}>▭ Rechteck</button>
-              <button onClick={draw({ kind: 'spielfeld', tool: 'Polygon' })}>✎ Eigene Form</button>
-            </div>
-          </Step>
+        <div className="wizard card stack">
+          <div className="wizard-steps" role="tablist">
+            {steps.map((st, i) => (
+              <button key={st.id} type="button" role="tab" aria-selected={i === stepIdx} aria-label={st.title}
+                className={`wizard-dot${i === stepIdx ? ' on' : ''}${st.done ? ' done' : ''}`} onClick={() => goStep(i)}>
+                <span>{st.done && i !== stepIdx ? '✓' : st.icon}</span>
+                <small>{st.title}</small>
+              </button>
+            ))}
+          </div>
+          <div>
+            <div className="muted small">Schritt {stepIdx + 1} von {steps.length}{cur.optional ? ' · freiwillig' : ''}</div>
+            <h2 style={{ margin: '2px 0 0' }}>{cur.icon} {cur.title}</h2>
+            <div className="muted small" style={{ marginTop: 4 }}>{cur.text}</div>
+          </div>
 
-          <Step n={2} done={has('treffpunkt')} title="Treffpunkt" text="Hier sammeln sich alle vor dem Start. Muss im Spielfeld liegen.">
-            <button onClick={draw({ kind: 'treffpunkt', tool: 'Marker' })} disabled={!field1}>📍 Treffpunkt antippen</button>
-          </Step>
-
-          <Step n={3} done={has('hq')} title="HQ der Hunter" text={`Hier warten die Hunter während des Vorsprungs. Mindestens ${config.start.hq_min_distance_m} m vom Treffpunkt entfernt.`}>
-            <button onClick={draw({ kind: 'hq', tool: 'Marker' })}>🚓 HQ antippen</button>
-          </Step>
-
-          {config.exit.enabled && (
-            <Step n={4} done={has('exit')} title="Exitpoint" text="Mehrere Kandidaten möglich, einer wird zufällig gewählt und erst gegen Schluss verraten.">
-              <button onClick={draw({ kind: 'exit', tool: 'Marker' })} disabled={!field1}>🏁 Exit-Kandidat antippen</button>
-            </Step>
+          {cur.id === 'feld' && (
+            <>
+              <div className="muted small"><strong>Am einfachsten:</strong> Karte auf den Ort schieben (oder oben suchen), dann Grösse antippen.</div>
+              <div className="tool-row size-row">
+                {sizes.map((z) => (
+                  <button key={z.label} className={`size-btn${z.recommended ? ' primary' : ''}`} onClick={() => quickField(z.km2)}>
+                    <strong>{z.label}</strong><span className="small">{z.km2 < 1 ? `${Math.round(z.km2 * 100)} ha` : `${z.km2.toFixed(1)} km²`}{z.recommended ? ' · empfohlen' : ''}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="muted small">Oder selbst zeichnen:</div>
+              <div className="tool-row">
+                <button onClick={draw({ kind: 'spielfeld', tool: 'Circle' })}>◯ Kreis</button>
+                <button onClick={draw({ kind: 'spielfeld', tool: 'Rectangle' })}>▭ Rechteck</button>
+                <button onClick={draw({ kind: 'spielfeld', tool: 'Polygon' })}>✎ Eigene Form</button>
+              </div>
+              {field1 && <div className="muted small">Tipp: Tippe das Spielfeld an, um die Ecken zu verschieben.</div>}
+            </>
           )}
 
-          <Step n={config.exit.enabled ? 5 : 4} keepOpen done={shrink !== 'manuell' || phases < 2 || features.some((f) => f.properties.kind === 'spielfeld' && (f.properties.day_index ?? 0) > 1)}
-            title="Verkleinerung über die Zeit" text="Das Spielfeld wird im Lauf des Spiels kleiner. Neue Grenzen werden vorher angekündigt und gestrichelt gezeigt.">
+          {cur.id === 'treff' && (
+            <>
+              <button className="primary" onClick={autoPoints} disabled={!field1}>✨ Treffpunkt, HQ{config.exit.enabled ? ' und Exits' : ''} automatisch setzen</button>
+              <button onClick={draw({ kind: 'treffpunkt', tool: 'Marker' })} disabled={!field1}>📍 Treffpunkt selbst antippen</button>
+            </>
+          )}
+
+          {cur.id === 'hq' && (
+            <>
+              <button className="primary" onClick={() => autoHq()} disabled={!field1}>✨ HQ automatisch setzen ({config.start.hq_min_distance_m + 50} m vom Treffpunkt)</button>
+              <button onClick={draw({ kind: 'hq', tool: 'Marker' })}>🚓 HQ selbst antippen</button>
+            </>
+          )}
+
+          {cur.id === 'exit' && (
+            <>
+              <button className="primary" onClick={() => autoExits(3)} disabled={!field1}>✨ 3 Exit-Kandidaten automatisch setzen</button>
+              <button onClick={draw({ kind: 'exit', tool: 'Marker' })} disabled={!field1}>🏁 Exit-Kandidat selbst antippen</button>
+              <div className="muted small">{features.filter((f) => f.properties.kind === 'exit').length} Kandidaten gesetzt.</div>
+            </>
+          )}
+
+          {cur.id === 'klein' && (
+            <>
             <div className="chips">
               {([['aus', 'Nie'], ['auto', 'Automatisch'], ['manuell', 'Selbst zeichnen']] as const).map(([v, t]) => (
                 <button key={v} type="button" className={`chip${shrink === v ? ' on' : ''}`} onClick={() => setZone('shrink_mode', v)}>{t}</button>
@@ -656,10 +809,11 @@ export default function MapEditorPage() {
                 )}
               </>
             )}
-          </Step>
+            </>
+          )}
 
-          <Step n={config.exit.enabled ? 6 : 5} done={has('sperrzone')} optional title="Gefahrenzonen (Sperrzonen)"
-            text="Orte, die nie betreten werden dürfen: Autobahn, Gleise, Gewässer, Schulen, Baustellen. Sie werden rot schraffiert mit Warnsymbol gezeigt, und Spieler werden beim Annähern gewarnt.">
+          {cur.id === 'gefahr' && (
+            <>
             <button onClick={loadHazards} disabled={!field1 || hazardBusy}>{hazardBusy ? 'Suche …' : '🔎 Gefahrenstellen automatisch vorschlagen'}</button>
             {hazards && hazards.length > 0 && (
               <div className="stack">
@@ -683,10 +837,11 @@ export default function MapEditorPage() {
               <button onClick={draw({ kind: 'sperrzone', tool: 'Line', restrictedType, widthM: lineWidth })} disabled={!field1}>〰 Entlang Strasse/Gleis</button>
             </div>
             <NumberRow label="Breite bei Linien (m)" value={lineWidth} min={5} max={200} step={5} onChange={setLineWidth} />
-          </Step>
+            </>
+          )}
 
-          <Step n={config.exit.enabled ? 7 : 6} done={['sicher', 'kern', 'aussen', 'center', 'sektion', 'startzone'].some((k) => has(k as ZoneKind))} optional title="Weitere Zonen"
-            text="Alle liegen innerhalb des Spielfelds. Was darüber hinausragt, wird automatisch abgeschnitten.">
+          {cur.id === 'mehr' && (
+            <>
             <div className="kind-grid">
               {(['sicher', 'kern', 'aussen', 'center', 'sektion', 'startzone'] as ZoneKind[]).map((k) => (
                 <button key={k} className="kind-btn" onClick={draw({ kind: k, tool: 'Polygon' })} disabled={!field1}>
@@ -696,24 +851,37 @@ export default function MapEditorPage() {
               ))}
             </div>
             {config.zone.sections_per_player && <div className="muted small">Sektionen pro Spieler sind aktiv: zeichne {players} Sektionen.</div>}
-          </Step>
+            </>
+          )}
 
-          <div className="card stack">
-            <h2 style={{ margin: 0 }}>Prüfung</h2>
-            {issues.length === 0 && <div className="notice success">Alles in Ordnung.</div>}
-            {issues.map((i, n) => <div key={n} className={`notice ${i.level === 'error' ? 'error' : 'warning'}`}>{i.text}</div>)}
-            {sticking.length > 0 && (
-              <div className="notice warning">
-                {sticking.length} Zone(n) ragen über das Spielfeld hinaus.{' '}
-                <button className="small" onClick={clipAll}>Zuschneiden</button>
-              </div>
+          {cur.id === 'fertig' && (
+            <>
+              {issues.length === 0 && <div className="notice success">Alles in Ordnung. Die Karte ist bereit.</div>}
+              {issues.map((i, n) => <div key={n} className={`notice ${i.level === 'error' ? 'error' : 'warning'}`}>{i.text}</div>)}
+              {sticking.length > 0 && (
+                <div className="notice warning">
+                  {sticking.length} Zone(n) ragen über das Spielfeld hinaus.{' '}
+                  <button className="small" onClick={clipAll}>Zuschneiden</button>
+                </div>
+              )}
+              {dirty && <button className="primary" onClick={save} disabled={busy || !loaded}>{busy ? 'Speichere …' : 'Karte speichern'}</button>}
+            </>
+          )}
+
+          <div className="row wizard-nav">
+            <button onClick={() => goStep(stepIdx - 1)} disabled={stepIdx === 0}>← Zurück</button>
+            <span className="spacer" />
+            {stepIdx < steps.length - 1 && (
+              <button className={cur.done || cur.optional ? 'primary' : ''} onClick={() => goStep(stepIdx + 1)}>
+                {cur.done || cur.optional ? 'Weiter →' : 'Überspringen →'}
+              </button>
             )}
           </div>
         </div>
       )}
 
-      <div className="card stack" style={{ marginTop: 12 }}>
-        <h2 style={{ margin: 0 }}>Alle Zonen ({items.length})</h2>
+      <details className="card" style={{ marginTop: 12 }}>
+        <summary><strong>Alle Zonen ({items.length})</strong> <span className="muted small">· zum Ändern antippen</span></summary>
         {items.length === 0 && <span className="muted small">Noch keine Zonen.</span>}
         <ul className="list zone-list">
           {items.map((it) => {
@@ -732,17 +900,16 @@ export default function MapEditorPage() {
             );
           })}
         </ul>
-      </div>
-
-      {editable && (
-        <div className="row" style={{ marginTop: 12 }}>
-          <button className="small" onClick={exportJson}>GeoJSON exportieren</button>
-          <label className="button small">
-            GeoJSON importieren
-            <input type="file" accept=".json,.geojson,application/geo+json" hidden disabled={!loaded} onChange={(e) => e.target.files?.[0] && importJson(e.target.files[0])} />
-          </label>
-        </div>
-      )}
+        {editable && (
+          <div className="row" style={{ marginTop: 12 }}>
+            <button className="small" onClick={exportJson}>GeoJSON exportieren</button>
+            <label className="button small">
+              GeoJSON importieren
+              <input type="file" accept=".json,.geojson,application/geo+json" hidden disabled={!loaded} onChange={(e) => e.target.files?.[0] && importJson(e.target.files[0])} />
+            </label>
+          </div>
+        )}
+      </details>
 
       {editable && dirty && (
         <div className="save-bar">
@@ -751,23 +918,6 @@ export default function MapEditorPage() {
         </div>
       )}
     </div>
-  );
-}
-
-function Step({ n, title, text, done, optional, keepOpen, children }: { n: number; title: string; text: string; done: boolean; optional?: boolean; keepOpen?: boolean; children: ReactNode }) {
-  // Nur beim ersten Anzeigen: erledigte Schritte zugeklappt, danach entscheidet der Nutzer.
-  const [open, setOpen] = useState(keepOpen || !done);
-  return (
-    <details className={`card step${done ? ' done' : ''}`} open={open} onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
-      <summary>
-        <span className="step-n">{done ? '✓' : n}</span>
-        <span className="spacer"><strong>{title}</strong>{optional && <span className="muted small"> (optional)</span>}</span>
-      </summary>
-      <div className="stack" style={{ marginTop: 8 }}>
-        <div className="muted small">{text}</div>
-        {children}
-      </div>
-    </details>
   );
 }
 

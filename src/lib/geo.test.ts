@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MapFeature } from './engine';
-import { areaKm2, bandFromLine, checkMap, clipTo, fieldOfPhase, outsideShare, shrinkArea, type Area } from './geo';
+import { areaKm2, bandFromLine, checkMap, circleWithArea, middleOf, pointAtDistance, pointInside, spreadPoints, clipTo, fieldOfPhase, outsideShare, shrinkArea, type Area } from './geo';
 
 const square = (x: number, y: number, d: number): Area => ({
   type: 'Feature', properties: {},
@@ -50,5 +50,17 @@ describe('geo', () => {
     expect(checkMap({ ...base, features: bad }).some((i) => i.text.includes('Sperrzone'))).toBe(true);
     const out = [zone('spielfeld', field), point('treffpunkt', 9, 48), point('exit', 8.51, 47.31)];
     expect(checkMap({ ...base, features: out }).some((i) => i.text.includes('Treffpunkt liegt ausserhalb'))).toBe(true);
+  });
+
+  it('erstellt Spielfeld und Punkte automatisch', () => {
+    const f = circleWithArea([8.54, 47.37], 1);
+    expect(areaKm2(f)).toBeCloseTo(1, 1);
+    const m = middleOf(f);
+    expect(pointInside(m, f)).toBe(true);
+    const hq = pointAtDistance(m, 300, f);
+    expect(pointInside(hq, f)).toBe(true);
+    const ex = spreadPoints(f, 3, [m]);
+    expect(ex).toHaveLength(3);
+    for (const p of ex) expect(pointInside(p, f)).toBe(true);
   });
 });

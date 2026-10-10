@@ -2,7 +2,7 @@
  * Geometrie-Helfer für Karten-Editor und Karte (Turf).
  * Koordinaten wie GeoJSON: [lng, lat].
  */
-import { area, booleanPointInPolygon, buffer, centroid, featureCollection, intersect, transformScale, union } from '@turf/turf';
+import { area, bbox, booleanPointInPolygon, buffer, centroid, circle, destination, featureCollection, intersect, pointOnFeature, transformScale, union } from '@turf/turf';
 import type { Feature, MultiPolygon, Polygon, Position } from 'geojson';
 import type { MapFeature, ZoneKind } from './engine';
 
@@ -176,4 +176,50 @@ export function recommendedKm2PerPlayer(minutes: number): [number, number] {
   if (minutes <= 240) return [0.15, 0.5];
   if (minutes <= 1440) return [1, 3];
   return [3, 8];
+}
+
+/** Kreisförmiges Spielfeld mit gewünschter Fläche um einen Mittelpunkt. */
+export function circleWithArea(center: Position, km2: number): Area {
+  const r = Math.sqrt(km2 / Math.PI) * 1000;
+  return circle(center, r, { units: 'meters', steps: 64 }) as Area;
+}
+
+/** Punkt sicher im Gebiet (Schwerpunkt, sonst ein Punkt auf der Fläche). */
+export function middleOf(field: Area): Position {
+  const c = centroid(field).geometry.coordinates;
+  return pointInside(c, field) ? c : pointOnFeature(field).geometry.coordinates;
+}
+
+const blockedAt = (pt: Position, blocked: Area | null) => !!blocked && pointInside(pt, blocked);
+
+/** Punkt im Abstand von `meters` zum Startpunkt, möglichst im Gebiet und nicht gesperrt. */
+export function pointAtDistance(from: Position, meters: number, field: Area | null, blocked: Area | null = null): Position {
+  let first: Position | null = null;
+  for (let b = 0; b < 360; b += 30) {
+    const pt = destination(from, meters, b, { units: 'meters' }).geometry.coordinates;
+    first ??= pt;
+    if ((!field || pointInside(pt, field)) && !blockedAt(pt, blocked)) return pt;
+  }
+  return first!;
+}
+
+/** Bis zu n gut verteilte Punkte im Gebiet, weit weg von `avoid`, nicht in gesperrten Flächen. */
+export function spreadPoints(field: Area, n: number, avoid: Position[] = [], blocked: Area | null = null): Position[] {
+  const [w, s, e, nn] = bbox(field);
+  const grid: Position[] = [];
+  const steps = 16;
+  for (let i = 1; i < steps; i++) {
+    for (let j = 1; j < steps; j++) {
+      const pt: Position = [w + ((e - w) * i) / steps, s + ((nn - s) * j) / steps];
+      if (pointInside(pt, field) && !blockedAt(pt, blocked)) grid.push(pt);
+    }
+  }
+  const chosen: Position[] = [];
+  const far = (pt: Position) => Math.min(Infinity, ...[...avoid, ...chosen].map((q) => distM(pt, q)));
+  while (chosen.length < n && grid.length) {
+    let best = 0;
+    for (let i = 1; i < grid.length; i++) if (far(grid[i]) > far(grid[best])) best = i;
+    chosen.push(grid.splice(best, 1)[0]);
+  }
+  return chosen;
 }
