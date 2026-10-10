@@ -172,6 +172,9 @@ begin
   while v_left > 0 loop
     v_step := least(v_left, 5);
     update public.games set clock_offset = clock_offset + make_interval(mins => v_step) where id = p_game_id;
+    -- Geräte gelten im Probelauf als durchgehend gemeldet: letzte Positionen mitverschieben.
+    update public.positions set at = at + make_interval(mins => v_step) where game_id = p_game_id;
+    update public.participants set last_seen_at = last_seen_at + make_interval(mins => v_step) where game_id = p_game_id;
     perform public.tick_game(p_game_id);
     v_left := v_left - v_step;
   end loop;
@@ -702,8 +705,10 @@ begin
   if g.status <> 'vorsprung' then
     perform public.create_ping(g, v_me.id, 'transit', v_pos.lat, v_pos.lng, v_pos.accuracy_m, null, null, null,
       replace(p_mode, '_', ' ') || coalesce(' ' || nullif(p_line, ''), ''), 0, v_now);
-    perform public.notify(p_game_id, 'taskforce', null, 'transit', public.pname(v_me.id) || ' fährt ' || replace(p_mode, '_', ' ') || coalesce(' ' || nullif(p_line, ''), ''),
-      coalesce(nullif(p_from, ''), '?') || ' → ' || coalesce(nullif(p_to, ''), '?') || '. Live-Standort sichtbar.', jsonb_build_object('participant_id', v_me.id), 'hoch');
+    perform public.notify(p_game_id, 'taskforce', null, 'transit', public.pname(v_me.id) || ' fährt ' || case p_mode when 'oev_bus' then 'Bus' when 'oev_bahn' then 'Bahn' when 'oev_tram' then 'Tram'
+      when 'faehre' then 'Fähre' when 'taxi' then 'Taxi' when 'fahrrad' then 'Velo' when 'scooter' then 'Scooter' else replace(p_mode, '_', ' ') end || coalesce(' ' || nullif(p_line, ''), ''),
+      case when nullif(p_from, '') is not null or nullif(p_to, '') is not null
+        then coalesce(nullif(p_from, ''), '?') || ' → ' || coalesce(nullif(p_to, ''), '?') || '. ' else '' end || 'Live-Standort sichtbar.', jsonb_build_object('participant_id', v_me.id), 'hoch');
   end if;
   perform public.bump(p_game_id);
   return v_id;
@@ -1238,15 +1243,22 @@ end; $$;
 
 create or replace function public.gm_add_zone(p_game_id uuid, p_feature jsonb)
 returns uuid language plpgsql security definer set search_path = public, extensions as $$
-declare v_id uuid;
+declare
+  v_id uuid;
+  v_geom extensions.geometry;
 begin
   perform public.require_participant(p_game_id, array['gm']);
   if (p_feature #>> '{properties,kind}') not in ('sperrzone', 'sicher', 'treffpunkt') then
     raise exception 'Im Spiel nur Sperrzonen, sichere Zonen oder Treffpunkte.' using errcode = 'P0001';
   end if;
+  v_geom := ST_SetSRID(ST_GeomFromGeoJSON((p_feature -> 'geometry')::text), 4326);
+  -- Punkt mit Radius als Kreisfläche speichern (Sperr- und Schutzzonen sind Flächen).
+  if ST_GeometryType(v_geom) = 'ST_Point' and (p_feature #>> '{properties,kind}') <> 'treffpunkt' then
+    v_geom := ST_Buffer(v_geom::geography, coalesce(nullif(p_feature #>> '{properties,radius_m}', '')::int, 50))::geometry;
+  end if;
   insert into public.zones (game_id, kind, name, geom, radius_m, crossing_allowed)
   values (p_game_id, p_feature #>> '{properties,kind}', coalesce(p_feature #>> '{properties,name}', ''),
-          ST_SetSRID(ST_GeomFromGeoJSON((p_feature -> 'geometry')::text), 4326), nullif(p_feature #>> '{properties,radius_m}', '')::int,
+          v_geom, nullif(p_feature #>> '{properties,radius_m}', '')::int,
           coalesce((p_feature #>> '{properties,crossing_allowed}')::boolean, false))
   returning id into v_id;
   update public.games set map_version = map_version + 1 where id = p_game_id;

@@ -14,7 +14,9 @@ import {
   type Role,
   type RosterEntry,
 } from '../lib/games';
+import { api } from '../lib/engine';
 import { db, errorText } from '../lib/supabase';
+import DeviceCheck from '../components/DeviceCheck';
 import { parseConfig } from '../shared/config';
 import { formatMinutes } from '../shared/format';
 import { getPreset } from '../shared/presets';
@@ -33,6 +35,7 @@ export default function GamePage() {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [starting, setStarting] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -59,6 +62,10 @@ export default function GamePage() {
       void db().removeChannel(channel);
     };
   }, [id, load]);
+
+  useEffect(() => {
+    if (game && ['vorsprung', 'laeuft', 'finale'].includes(game.status)) navigate(`/spiel/${game.id}/live`, { replace: true });
+  }, [game?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const config = useMemo(() => (game ? parseConfig(game.config_json) : null), [game]);
   const me = roster.find((r) => r.user_id === session?.user.id);
@@ -105,6 +112,20 @@ export default function GamePage() {
     });
   }
 
+  async function startGame(test: boolean) {
+    if (!game) return;
+    setStarting(true);
+    setError(null);
+    try {
+      await api.start(game.id, test);
+      navigate(`/spiel/${game.id}/live`);
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setStarting(false);
+    }
+  }
+
   async function share() {
     if (!game) return;
     const url = `${window.location.origin}/beitreten/${game.code}`;
@@ -142,6 +163,12 @@ export default function GamePage() {
         <span className="badge">{STATUS_LABELS[game.status] ?? game.status}</span>
       </div>
 
+      {!inLobby && (
+        <Link to={`/spiel/${game.id}/live`} className="button primary block" style={{ marginBottom: 12 }}>
+          {game.status === 'beendet' ? 'Ergebnis und Wiederholung' : 'Zum laufenden Spiel'}
+        </Link>
+      )}
+
       {inLobby && (
         <div className="card stack">
           <div className="muted small" style={{ textAlign: 'center' }}>Beitritts-Code</div>
@@ -160,6 +187,9 @@ export default function GamePage() {
         <div className="row" style={{ marginTop: 8 }}>
           <Link to={`/spiel/${game.id}/regeln`} className="button small">
             {isHost && inLobby ? 'Regeln bearbeiten' : 'Regeln ansehen'}
+          </Link>
+          <Link to={`/spiel/${game.id}/karte`} className="button small">
+            {isHost && inLobby ? 'Karte zeichnen' : 'Karte ansehen'}
           </Link>
         </div>
       </div>
@@ -239,6 +269,8 @@ export default function GamePage() {
         </div>
       )}
 
+      {inLobby && me && <DeviceCheck gameId={game.id} minBattery={config.lobby.min_battery_percent} />}
+
       {inLobby && isHost && (
         <>
           <div className="row" style={{ marginBottom: 12 }}>
@@ -247,11 +279,15 @@ export default function GamePage() {
           </div>
           <h2>Startprüfung</h2>
           <IssueList issues={checks.issues} />
-          <button className="primary block" style={{ marginTop: 12 }} disabled title="Kommt mit Schritt 3">
-            Spiel starten
+          <button className="primary block" style={{ marginTop: 12 }} disabled={!checks.canStart || starting}
+            onClick={() => startGame(false)}>
+            {starting ? 'Starte …' : 'Spiel starten'}
+          </button>
+          <button className="block" style={{ marginTop: 8 }} disabled={starting} onClick={() => startGame(true)}>
+            Probelauf starten (mit Vorspulen)
           </button>
           <p className="muted small">
-            {checks.canStart ? 'Alles bereit. ' : ''}Der Spielstart wird mit Schritt 3 (Spiel-Engine) freigeschaltet.
+            Beim Start beginnt der Vorsprung der Spieler. Im Probelauf kann die Spielleitung die Zeit vorspulen, um alles auszuprobieren.
           </p>
         </>
       )}

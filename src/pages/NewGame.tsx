@@ -1,9 +1,9 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import ConfigEditor from '../components/ConfigEditor';
 import IssueList from '../components/IssueList';
 import { createGame } from '../lib/games';
-import { errorText } from '../lib/supabase';
+import { db, errorText } from '../lib/supabase';
 import { gameConfigSchema, type GameConfig } from '../shared/config';
 import { PRESETS, configFromPreset } from '../shared/presets';
 import { validateConfig } from '../shared/validation';
@@ -26,6 +26,12 @@ export default function NewGamePage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
+  const [groups, setGroups] = useState<{ id: string; name: string }[]>([]);
+  const [groupId, setGroupId] = useState('');
+
+  useEffect(() => {
+    void db().from('groups').select('id,name').then(({ data }) => setGroups((data ?? []) as { id: string; name: string }[]));
+  }, []);
 
   const result = useMemo(() => validateConfig(config), [config]);
   const problemPaths = useMemo(
@@ -61,6 +67,10 @@ export default function NewGamePage() {
         result.config,
         startAt ? new Date(startAt).toISOString() : null,
       );
+      if (groupId) {
+        const { error: gErr } = await db().rpc('set_game_group', { p_game_id: game.id, p_group_id: groupId });
+        if (gErr) throw gErr;
+      }
       navigate(`/spiel/${game.id}`, { replace: true });
     } catch (err) {
       setError(errorText(err));
@@ -84,6 +94,16 @@ export default function NewGamePage() {
           Geplanter Start (optional)
           <input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} />
         </label>
+
+        {groups.length > 0 && (
+          <label className="field">
+            Gruppe (optional)
+            <select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+              <option value="">Keine</option>
+              {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+            </select>
+          </label>
+        )}
 
         <h2>Voreinstellung</h2>
         <div className="stack">
