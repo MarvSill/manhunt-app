@@ -187,3 +187,26 @@ details summary { cursor: pointer; font-weight: 600; }
 .extra-rules li > * { vertical-align: middle; }
 .extra-rules li { display: list-item; }
 .extra-rules li .spacer { display: inline; }
+
+/* Gefahren- und Schutzzonen auf der Karte */
+path.hm-danger { fill: url(#hm-hatch) !important; fill-opacity: 1 !important; }
+.zone-badge { font-size: 14px; line-height: 22px; text-align: center; border-radius: 11px; padding: 0 4px; white-space: nowrap; box-shadow: 0 0 0 2px rgba(0,0,0,.5); }
+.zone-badge.danger { background: #f85149; }
+.zone-badge.safe { background: #2ea043; }
+
+/* Karten-Editor */
+.map-wrap { position: relative; }
+.draw-hint { position: absolute; left: 8px; right: 8px; bottom: 28px; z-index: 1000; background: var(--surface); border: 2px solid var(--red); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 4px 16px rgba(0,0,0,.4); }
+.tool-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.tool-row button { min-height: 52px; font-size: 16px; }
+.kind-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.kind-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; min-height: 64px; padding: 8px 10px; }
+.phase-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 4px 0; border-bottom: 1px solid var(--border); }
+details.step > summary { display: flex; gap: 10px; align-items: center; cursor: pointer; list-style: none; min-height: 40px; }
+details.step > summary::-webkit-details-marker { display: none; }
+.step-n { width: 30px; height: 30px; border-radius: 50%; background: var(--red); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; }
+details.step.done .step-n { background: var(--green); }
+.zone-list li { cursor: pointer; }
+.zone-list li.selected { background: rgba(229, 72, 77, 0.12); }
+.zone-props { border-color: var(--red); }
+.save-bar { position: sticky; bottom: calc(58px + env(safe-area-inset-bottom)); z-index: 1001; display: flex; gap: 10px; align-items: center; margin-top: 12px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }

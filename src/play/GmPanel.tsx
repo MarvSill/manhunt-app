@@ -59,7 +59,7 @@ export default function GmPanel(props: PanelProps & { pickZone: () => void; pick
           </div>
         )}
         <div className="small muted">
-          Tag {g.current_day}/{cfg.game.days}{g.next_day_at && ` · nächster Tag ${clock(g.next_day_at)}`} · Ende {clock(g.ends_at)} ({countdown(g.ends_at, now)})
+          Tag {g.current_day}/{cfg.game.days}{g.next_day_at && ` · nächster Tag ${clock(g.next_day_at)}`}{(g.phase_count ?? 0) > 1 && g.next_phase_at && ` · Spielfeld wird kleiner ${clock(g.next_phase_at)} (Phase ${(g.phase ?? 1) + 1}/${g.phase_count})`} · Ende {clock(g.ends_at)} ({countdown(g.ends_at, now)})
           {g.exit_reveal_at && !g.exit_revealed && ` · Exit-Bekanntgabe ${clock(g.exit_reveal_at)}`}
         </div>
       </Section>

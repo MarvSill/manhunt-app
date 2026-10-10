@@ -40,7 +40,7 @@ export interface GameState {
   game: {
     id: string; name: string; code: string; status: string; is_test: boolean; host: boolean; start_at: string | null;
     hunt_start_at: string | null; ends_at: string | null; deadline_at: string | null; next_day_at: string | null;
-    current_day: number; paused: boolean; pause_reason: string | null; timezone: string; speedhunts_left: number;
+    current_day: number; phase?: number; phase_count?: number; next_phase_at?: string | null; paused: boolean; pause_reason: string | null; timezone: string; speedhunts_left: number;
     exit_revealed: boolean; exit_reveal_at: string | null; map_version: number;
     result: { reason: string; winners: string[]; mode: string; scores: Record<string, number>; hours: number; catches: number; pings: number; speedhunts: number } | null;
     meeting_point: string | null; config: GameConfig; group_id: string | null; quiet: boolean;

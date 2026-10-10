@@ -184,7 +184,7 @@ export default function PlayPage() {
       <div className="topbar">
         <Link to="/" className="button ghost small">←</Link>
         <div className="spacer">
-          <div className="small muted">{g.name} · {STATUS_LABELS[g.status]}{g.is_test ? ' · Probelauf' : ''}{g.current_day > 0 && ` · Tag ${g.current_day}/${g.config.game.days}`}</div>
+          <div className="small muted">{g.name} · {STATUS_LABELS[g.status]}{g.is_test ? ' · Probelauf' : ''}{g.current_day > 0 && ` · Tag ${g.current_day}/${g.config.game.days}`}{(g.phase_count ?? 0) > 1 && g.config.zone.shrink_every_minutes > 0 && ` · Phase ${g.phase}/${g.phase_count}`}</div>
           <div className="headline">{headline}</div>
         </div>
         <span className={`badge ${role === 'spieler' ? 'green' : role === 'gm' ? '' : 'red'}`}>{role === 'spieler' ? 'Spieler' : role === 'gm' ? 'Spielleitung' : role === 'zuschauer' ? 'Zuschauer' : 'Taskforce'}</span>
@@ -229,7 +229,7 @@ export default function PlayPage() {
                 {' '}<button className="small ghost" onClick={() => setPick(null)}>Abbrechen</button>
               </div>
             )}
-            <MapView zones={zones} markers={markers} onClick={pick ? mapClick : undefined} fitKey={g.id} height="62dvh" showDay={g.current_day} />
+            <MapView zones={zones} markers={markers} onClick={pick ? mapClick : undefined} fitKey={g.id} height="62dvh" showDay={g.phase ?? g.current_day} />
             <div className="row small" style={{ marginTop: 8 }}>
               {role === 'spieler' && s.me.next_ping_at && <span className="badge">Nächster Ping {clock(s.me.next_ping_at)}</span>}
               {s.next_silent_ping_at && role !== 'spieler' && <span className="badge">Nächster Silent-Ping {clock(s.next_silent_ping_at)}</span>}
