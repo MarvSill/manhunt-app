@@ -44,6 +44,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/neu" element={<NewGamePage />} />
+        <Route path="/neu/eigenes" element={<NewGamePage />} />
         <Route path="/beitreten" element={<JoinPage />} />
         <Route path="/beitreten/:code" element={<JoinPage />} />
         <Route path="/spiel/:id" element={<GamePage />} />

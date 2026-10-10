@@ -143,3 +143,16 @@ describe('Validierung (Kapitel 25)', () => {
     expect(validateConfig(c).issues.some((i) => i.code === 'exit_ignored')).toBe(true);
   });
 });
+
+describe('Eigene Zusatzregeln', () => {
+  it('sind standardmässig leer und werden gekürzt gespeichert', () => {
+    expect(defaultConfig().extras.rules).toEqual([]);
+    const c = parseConfig({ extras: { rules: ['  Kein Taxi nach 22 Uhr  '] } });
+    expect(c.extras.rules).toEqual(['Kein Taxi nach 22 Uhr']);
+  });
+
+  it('lehnt leere und zu viele Regeln ab', () => {
+    expect(() => parseConfig({ extras: { rules: [' '] } })).toThrow();
+    expect(() => parseConfig({ extras: { rules: Array(31).fill('x') } })).toThrow();
+  });
+});

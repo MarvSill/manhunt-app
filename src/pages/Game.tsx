@@ -179,7 +179,7 @@ export default function GamePage() {
 
       <div className="card small">
         <div>
-          {preset?.name ?? 'Eigene Regeln'} · {formatMinutes(config.game.duration_minutes)} · {config.game.days} Spieltage
+          {preset?.name ?? 'Eigene Regeln'} · {formatMinutes(config.game.duration_minutes)} · {config.game.days} {config.game.days === 1 ? 'Spieltag' : 'Spieltage'}
         </div>
         {game.start_at && (
           <div>Start: {new Date(game.start_at).toLocaleString('de-CH', { dateStyle: 'medium', timeStyle: 'short' })}</div>
@@ -193,6 +193,13 @@ export default function GamePage() {
           </Link>
         </div>
       </div>
+
+      {config.extras.rules.length > 0 && (
+        <div className="card small">
+          <strong>Zusatzregeln</strong>
+          <ol className="extra-rules">{config.extras.rules.map((r, i) => <li key={i}>{r}</li>)}</ol>
+        </div>
+      )}
 
       <h2>
         Teilnehmende ({roster.length}) · {checks.players}/{config.roles.players_max} Spieler · {checks.hunters}/{config.roles.hunters_max} Hunter

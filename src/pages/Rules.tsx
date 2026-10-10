@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import ConfigEditor from '../components/ConfigEditor';
+import ExtraRules from '../components/ExtraRules';
 import IssueList from '../components/IssueList';
 import { useAuth } from '../lib/auth';
 import { diffConfig, getGame, updateConfig, type Game } from '../lib/games';
@@ -86,6 +87,9 @@ export default function RulesPage() {
       </div>
       {!editable && <div className="notice info" style={{ marginBottom: 12 }}>Nur der Host kann die Regeln vor dem Start ändern.</div>}
       <IssueList issues={result.issues} />
+      <div style={{ height: 12 }} />
+      <ExtraRules rules={config.extras.rules} readOnly={!editable}
+        onChange={(rules) => edit({ ...config, extras: { ...config.extras, rules } })} />
       <div style={{ height: 12 }} />
       <ConfigEditor config={config} baseline={baseline} readOnly={!editable} problemPaths={problemPaths} onChange={edit} />
       {msg && <div className={`notice ${msg.kind}`} style={{ margin: '12px 0' }}>{msg.text}</div>}
