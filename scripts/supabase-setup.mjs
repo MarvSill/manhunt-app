@@ -37,7 +37,8 @@ async function api(method, path, body) {
 
 async function findOrCreateProject() {
   const projects = await api('GET', '/v1/projects');
-  const found = projects.find((p) => p.name === NAME);
+  // Projekt "hunt-mode", sonst das einzige vorhandene Projekt (z. B. im Dashboard von Hand angelegt).
+  const found = projects.find((p) => p.name.toLowerCase() === NAME) ?? (projects.length === 1 ? projects[0] : undefined);
   if (found) {
     console.log(`Projekt "${NAME}" gefunden (${found.id}, ${found.status}).`);
     if (found.status === 'INACTIVE' || found.status === 'PAUSED') {
@@ -57,6 +58,9 @@ async function findOrCreateProject() {
   try {
     created = await api('POST', '/v1/projects', { ...base, organization_slug: org.slug ?? org.id });
   } catch (e) {
+    if (e.status === 401 || e.status === 403) {
+      throw new Error('Supabase erlaubt das Anlegen per Token nicht. Bitte im Dashboard ein Projekt "hunt-mode" (Region Frankfurt) anlegen und neu starten.');
+    }
     if (e.status !== 400 && e.status !== 422) throw e;
     created = await api('POST', '/v1/projects', { ...base, organization_id: org.id });
   }
