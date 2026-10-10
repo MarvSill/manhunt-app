@@ -47,8 +47,9 @@ async function findOrCreateProject() {
     return found.id;
   }
   const orgs = await api('GET', '/v1/organizations');
-  if (!orgs.length) throw new Error('Kein Supabase-Team gefunden. Bitte einmal auf supabase.com anmelden.');
-  const org = orgs[0];
+  // Neues Supabase-Konto ohne Team (Organisation): eines anlegen.
+  const org = orgs[0] ?? (await api('POST', '/v1/organizations', { name: 'Hunt Mode' }));
+  if (!orgs.length) console.log(`Team "${org.name}" angelegt.`);
   const dbPass = randomBytes(24).toString('base64url'); // wird nie gebraucht, alles läuft über das Token
   const base = { name: NAME, db_pass: dbPass, region: REGION };
   console.log(`Lege Projekt "${NAME}" im Team "${org.name}" an (${REGION}) ...`);
