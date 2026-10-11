@@ -91,7 +91,7 @@ export default function RulesPage() {
       <ExtraRules rules={config.extras.rules} readOnly={!editable}
         onChange={(rules) => edit({ ...config, extras: { ...config.extras, rules } })} />
       <div style={{ height: 12 }} />
-      <ConfigEditor config={config} baseline={baseline} readOnly={!editable} problemPaths={problemPaths} onChange={edit} />
+      <ConfigEditor config={result.config} baseline={baseline} readOnly={!editable} problemPaths={problemPaths} onChange={edit} />
       {msg && <div className={`notice ${msg.kind}`} style={{ margin: '12px 0' }}>{msg.text}</div>}
       {editable && (
         <button className="primary block" disabled={busy || changes.length === 0} onClick={save}>

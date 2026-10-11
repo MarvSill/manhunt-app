@@ -2,10 +2,13 @@ import '../lib/leafletGlobal';
 import '@geoman-io/leaflet-geoman-free';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import L from 'leaflet';
+import { addMapButtons } from '../lib/mapControls';
 import 'leaflet/dist/leaflet.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { esc, zoneBadge, zoneStyle } from '../components/MapView';
+import Info from '../components/Info';
+import { esc, pointIcon, zoneBadge, zoneStyle } from '../components/MapView';
+import { STEP_HELP, ZONE_HELP } from '../shared/help';
 import { api, ZONE_INFO, ZONE_KINDS, type MapFeature, type ZoneKind } from '../lib/engine';
 import {
   areaKm2, bandFromLine, centerOf, checkMap, circleWithArea, clipTo, fieldOfPhase, INSIDE_FIELD, middleOf, outsideShare, pointAtDistance, pointInside,
@@ -15,6 +18,7 @@ import { diffConfig, getGame, updateConfig, type Game } from '../lib/games';
 import { suggestHazards, type HazardSuggestion } from '../lib/hazards';
 import { errorText } from '../lib/supabase';
 import { gameConfigSchema, parseConfig, type GameConfig } from '../shared/config';
+import { durationText, fitTimes, timeLimits } from '../shared/timeRules';
 
 interface Item { key: string; feature: MapFeature; layer: L.Layer }
 type Tool = 'Polygon' | 'Rectangle' | 'Circle' | 'Marker' | 'Line';
@@ -90,6 +94,8 @@ export default function MapEditorPage() {
   const handleCreateRef = useRef<(layer: L.Layer) => void>(() => undefined);
 
   const editable = !!game && ['entwurf', 'geplant', 'lobby'].includes(game.status);
+  const editableRef = useRef(editable);
+  editableRef.current = editable;
   const gameId = game?.id;
   const features = useMemo(() => items.map((x) => x.feature), [items]);
   const phases = config ? phaseCount(config) : 1;
@@ -129,7 +135,7 @@ export default function MapEditorPage() {
     let l: L.Layer;
     if (feature.geometry.type === 'Point') {
       const [lng, lat] = (feature.geometry as GeoJSON.Point).coordinates;
-      l = L.circle([lat, lng], { radius: feature.properties.radius_m || 30 });
+      l = L.marker([lat, lng], { icon: pointIcon(feature.properties.kind), draggable: editableRef.current });
     } else {
       l = L.geoJSON(feature as GeoJSON.Feature).getLayers()[0];
     }
@@ -137,10 +143,12 @@ export default function MapEditorPage() {
     const it: Item = { key: newKey(), feature, layer: l };
     restyle(it);
     l.on('click', () => setSelected(it.key));
-    l.on('pm:edit', () => {
+    const changed = () => {
       setItems((prev) => prev.map((x) => (x.key === it.key ? { ...x, feature: layerToFeature(l, x.feature.properties) } : x)));
       setDirty(true);
-    });
+    };
+    l.on('pm:edit', changed);
+    l.on('dragend', changed);
     return it;
   }, [layerToFeature, restyle]);
 
@@ -154,7 +162,13 @@ export default function MapEditorPage() {
         if (g) {
           const c = parseConfig(g.config_json);
           setSavedConfig(c);
-          setConfig(c);
+          // Alte Spiele: unstimmige Zeiten gleich anpassen (wird mit der Karte gespeichert).
+          const fit = fitTimes(c);
+          setConfig(fit.config);
+          if (fit.fixes.length && ['entwurf', 'geplant', 'lobby'].includes(g.status)) {
+            setDirty(true);
+            setMsg({ ok: true, text: 'Angepasst: ' + fit.fixes.map((f) => f.message).join(' ') });
+          }
         }
       } catch (err) {
         setMsg({ ok: false, text: errorText(err) });
@@ -175,6 +189,13 @@ export default function MapEditorPage() {
     m.pm.setLang('de');
     m.pm.setGlobalOptions({ snappable: true, snapDistance: 15, allowSelfIntersection: false } as L.PM.GlobalOptions);
     m.on('pm:create', (e: { layer: L.Layer }) => handleCreateRef.current(e.layer));
+    addMapButtons(m, {
+      wrap: () => el.current?.parentElement ?? null,
+      fit: () => {
+        const b = group.current?.getBounds();
+        return b?.isValid() ? b : null;
+      },
+    });
     let cancelled = false;
     void (async () => {
       try {
@@ -219,11 +240,23 @@ export default function MapEditorPage() {
     if (!b) return;
     b.clearLayers();
     for (const f of features) if (f.properties.kind === 'sperrzone' || f.properties.kind === 'sicher') b.addLayer(zoneBadge(f));
-  }, [features]);
+    // Gestrichelte Kreise: Mindestabstand um das HQ, Ankunftsradius um den Exit.
+    for (const f of features) {
+      if (f.geometry.type !== 'Point' || !config) continue;
+      const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates;
+      const k = f.properties.kind;
+      const r = k === 'hq' ? config.start.hq_min_distance_m : k === 'exit' ? config.exit.radius_m : 0;
+      if (!r) continue;
+      const ring = L.circle([lat, lng], { radius: r, color: ZONE_INFO[k].color, weight: 2, dashArray: '6 6', fill: false, interactive: false });
+      if (k === 'hq') ring.bindTooltip(`${r} m Mindestabstand zum Treffpunkt`, { direction: 'top', opacity: 0.8 });
+      b.addLayer(ring);
+    }
+  }, [features, config]);
 
   // Gewählte Zone bearbeitbar machen
   useEffect(() => {
     for (const it of items) {
+      if (it.layer instanceof L.Marker) continue;
       const pm = (it.layer as L.Layer & { pm?: { enable: (o?: object) => void; disable: () => void; enabled: () => boolean } }).pm;
       if (!pm) continue;
       if (editable && it.key === selected) {
@@ -270,6 +303,7 @@ export default function MapEditorPage() {
     const p = pendingRef.current;
     setPending(null);
     m.pm.disableDraw();
+    m.doubleClickZoom.enable();
     if (!p) return;
     const field1 = fieldOfPhase(itemsRef.current.map((x) => x.feature), 1);
     const props: MapFeature['properties'] = { kind: p.kind, name: '' };
@@ -337,6 +371,7 @@ export default function MapEditorPage() {
     const m = map.current;
     if (!m || !editable) return;
     m.pm.disableDraw();
+    m.doubleClickZoom.disable();
     setSelected(null);
     setPending(p);
     setMsg(null);
@@ -352,6 +387,7 @@ export default function MapEditorPage() {
   }
 
   function cancelDraw() {
+    map.current?.doubleClickZoom.enable();
     map.current?.pm.disableDraw();
     setPending(null);
   }
@@ -397,7 +433,11 @@ export default function MapEditorPage() {
     const next = structuredClone(config);
     next.zone[key] = value;
     const parsed = gameConfigSchema.safeParse(next);
-    if (parsed.success) setConfig(parsed.data);
+    if (!parsed.success) return;
+    // Zeiten müssen in die Spieldauer passen.
+    const fit = fitTimes(parsed.data);
+    setConfig(fit.config);
+    if (fit.fixes.length) setMsg({ ok: true, text: fit.fixes.map((f) => f.message).join(' ') });
     setDirty(true);
   }
 
@@ -474,6 +514,10 @@ export default function MapEditorPage() {
     try {
       const list = itemsRef.current.map((it) => {
         const { id: _id, released: _r, visible_from: _v, ...props } = it.feature.properties;
+        // Punkte: Radius kommt aus den Regeln (HQ-Kreis, Exit-Radius).
+        if (props.kind === 'hq') props.radius_m = config.start.hq_radius_m;
+        if (props.kind === 'exit') props.radius_m = config.exit.radius_m;
+        if (props.kind === 'treffpunkt') props.radius_m = 30;
         return { type: 'Feature' as const, geometry: it.feature.geometry, properties: props };
       });
       const n = await api.saveMap(game.id, list);
@@ -628,6 +672,7 @@ export default function MapEditorPage() {
   });
   const sticking = field1 ? items.filter((it) => INSIDE_FIELD.includes(it.feature.properties.kind) && isArea(it.feature) && outsideShare(asArea(it.feature), field1) > 0.01) : [];
   const unitLabel = config.zone.shrink_every_minutes > 0 ? 'Phase' : 'Spieltag';
+  const limits = timeLimits(config);
   const draw = (p: Pending) => () => startDraw(p);
   const others: ZoneKind[] = ['sicher', 'kern', 'aussen', 'center', 'sektion', 'startzone'];
   const steps: { id: string; icon: string; title: string; text: string; done: boolean; optional?: boolean }[] = [
@@ -709,7 +754,7 @@ export default function MapEditorPage() {
           </div>
           <div>
             <div className="muted small">Schritt {stepIdx + 1} von {steps.length}{cur.optional ? ' · freiwillig' : ''}</div>
-            <h2 style={{ margin: '2px 0 0' }}>{cur.icon} {cur.title}</h2>
+            <h2 style={{ margin: '2px 0 0' }}>{cur.icon} {cur.title} <Info title={cur.title} text={STEP_HELP[cur.id]} /></h2>
             <div className="muted small" style={{ marginTop: 4 }}>{cur.text}</div>
           </div>
 
@@ -767,24 +812,26 @@ export default function MapEditorPage() {
                 <div className="field">
                   <span>Wann wird es kleiner?</span>
                   <div className="chips">
-                    <button type="button" className={`chip${config.zone.shrink_every_minutes === 0 ? ' on' : ''}`} onClick={() => setZone('shrink_every_minutes', 0)}>
-                      Jeden Spieltag ({config.game.days})
-                    </button>
+                    {config.game.days > 1 && (
+                      <button type="button" className={`chip${config.zone.shrink_every_minutes === 0 ? ' on' : ''}`} onClick={() => setZone('shrink_every_minutes', 0)}>
+                        Jeden Spieltag ({config.game.days})
+                      </button>
+                    )}
                     <button type="button" className={`chip${config.zone.shrink_every_minutes > 0 ? ' on' : ''}`}
                       onClick={() => setZone('shrink_every_minutes', config.zone.shrink_every_minutes || Math.max(10, Math.round(config.game.duration_minutes / 4 / 5) * 5))}>
-                      Alle paar Minuten
+                      {config.game.days > 1 ? 'Alle paar Minuten' : `Alle paar Minuten (Spiel dauert ${durationText(config.game.duration_minutes)})`}
                     </button>
                   </div>
                 </div>
                 {config.zone.shrink_every_minutes > 0 && (
-                  <NumberRow label="Alle (Minuten)" value={config.zone.shrink_every_minutes} min={5} max={1440} step={5} onChange={(v) => setZone('shrink_every_minutes', v)} />
+                  <NumberRow label="Alle (Minuten)" value={config.zone.shrink_every_minutes} min={5} max={limits['zone.shrink_every_minutes']?.max ?? 1440} step={5} onChange={(v) => setZone('shrink_every_minutes', v)} />
                 )}
                 <div className="muted small">{phases} {unitLabel === 'Phase' ? 'Phasen' : 'Spieltage'} → das Spielfeld ändert sich {Math.max(0, phases - 1)}-mal.</div>
                 {shrink === 'auto' && (
                   <NumberRow label="Kleiner um (% Fläche je Schritt)" value={config.zone.auto_shrink_percent} min={1} max={80} step={5} onChange={(v) => setZone('auto_shrink_percent', v)} />
                 )}
-                <NumberRow label="Vorher ankündigen (Minuten)" value={config.zone.shrink_announce_minutes} min={0} max={1440} step={5} onChange={(v) => setZone('shrink_announce_minutes', v)} />
-                <NumberRow label="Zeit zum Rauslaufen (Minuten)" value={config.zone.shrink_grace_minutes} min={0} max={120} step={1} onChange={(v) => setZone('shrink_grace_minutes', v)} />
+                <NumberRow label="Vorher ankündigen (Minuten)" value={config.zone.shrink_announce_minutes} min={0} max={limits['zone.shrink_announce_minutes']?.max ?? 1440} step={5} onChange={(v) => setZone('shrink_announce_minutes', v)} />
+                <NumberRow label="Zeit zum Rauslaufen (Minuten)" value={config.zone.shrink_grace_minutes} min={0} max={limits['zone.shrink_grace_minutes']?.max ?? 120} step={1} onChange={(v) => setZone('shrink_grace_minutes', v)} />
                 {shrink === 'auto' && <div className="muted small">Es wird Richtung Exitpoint kleiner (ohne Exit Richtung Mitte).</div>}
                 {shrink === 'manuell' && phases > 1 && (
                   <div className="stack">
@@ -844,10 +891,13 @@ export default function MapEditorPage() {
             <>
             <div className="kind-grid">
               {(['sicher', 'kern', 'aussen', 'center', 'sektion', 'startzone'] as ZoneKind[]).map((k) => (
-                <button key={k} className="kind-btn" onClick={draw({ kind: k, tool: 'Polygon' })} disabled={!field1}>
-                  <span>{ICON[k]} {ZONE_INFO[k].label}</span>
-                  <span className="muted small">{ZONE_INFO[k].help}</span>
-                </button>
+                <div key={k} className="kind-item">
+                  <button className="kind-btn" onClick={draw({ kind: k, tool: 'Polygon' })} disabled={!field1}>
+                    <span>{ICON[k]} {ZONE_INFO[k].label}</span>
+                    <span className="muted small">{ZONE_INFO[k].help}</span>
+                  </button>
+                  <span className="kind-info"><Info title={ZONE_HELP[k].title} text={ZONE_HELP[k].text} /></span>
+                </div>
               ))}
             </div>
             {config.zone.sections_per_player && <div className="muted small">Sektionen pro Spieler sind aktiv: zeichne {players} Sektionen.</div>}
@@ -946,11 +996,11 @@ function ZoneProps({ sel, editable, phases, unitLabel, update, remove, close }: 
   return (
     <div className="card stack zone-props">
       <div className="row">
-        <h2 className="spacer" style={{ margin: 0 }}>{p.kind === 'sperrzone' ? restrictedInfo(p.restricted_type).icon : ICON[p.kind]} {p.name || ZONE_INFO[p.kind].label}</h2>
+        <h2 className="spacer" style={{ margin: 0 }}>{p.kind === 'sperrzone' ? restrictedInfo(p.restricted_type).icon : ICON[p.kind]} {p.name || ZONE_INFO[p.kind].label} <Info title={ZONE_HELP[p.kind].title} text={ZONE_HELP[p.kind].text} /></h2>
         <button className="ghost small" onClick={close} aria-label="Schliessen">✕</button>
       </div>
       {editable && !isPoint && <div className="muted small">Ecken ziehen zum Ändern, Mitte einer Kante ziehen für eine neue Ecke, ganze Zone verschieben mit Ziehen.</div>}
-      {editable && isPoint && <div className="muted small">Zum Verschieben den Kreis ziehen.</div>}
+      {editable && isPoint && <div className="muted small">Zum Verschieben das Symbol gedrückt halten und ziehen.</div>}
       <label className="field">
         Name
         <input value={p.name ?? ''} disabled={!editable} onChange={(e) => update(sel.key, { name: e.target.value })} />
@@ -976,13 +1026,6 @@ function ZoneProps({ sel, editable, phases, unitLabel, update, remove, close }: 
             <span>Überqueren erlaubt (z. B. Brücke), Aufenthalt nicht</span>
           </label>
         </>
-      )}
-      {isPoint && (
-        <label className="field">
-          Radius: {p.radius_m ?? 30} m
-          <input type="range" min={10} max={p.kind === 'hq' ? 500 : 300} step={5} disabled={!editable} value={p.radius_m ?? 30}
-            onChange={(e) => update(sel.key, { radius_m: +e.target.value })} />
-        </label>
       )}
       {p.kind === 'spielfeld' && phases > 1 && (
         <>

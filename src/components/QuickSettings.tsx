@@ -1,6 +1,15 @@
 import type { ReactNode } from 'react';
-import { CATCH_METHODS, type GameConfig } from '../shared/config';
+import { CATCH_METHODS, JOKER_TYPES, type GameConfig } from '../shared/config';
+import { SETTING_HELP } from '../shared/help';
 import { optionLabel } from '../shared/schemaMeta';
+import { timeLimits } from '../shared/timeRules';
+import Info from './Info';
+
+const JOKER_LABELS: Record<string, string> = {
+  regeneration: 'Regeneration (keine Pings)',
+  hunter_erfragen: 'Hunter-Standorte sehen (5 min)',
+  catch_free: 'Catch-Free (nicht fangbar)',
+};
 
 /**
  * Die wichtigsten Regeln auf einen Blick, mit grossen Knöpfen statt Zahlenfeldern.
@@ -22,6 +31,18 @@ export default function QuickSettings({ config, onChange }: Props) {
 
   const g = config.game;
   const multiDay = g.days > 1;
+  const limits = timeLimits(config);
+  /** Höchstwert: Schema-Grenze oder, falls kleiner, was die Spieldauer erlaubt. */
+  const lim = (path: string, max: number) => Math.min(max, limits[path]?.max ?? max);
+  const j = config.joker;
+  function setJokerType(type: (typeof JOKER_TYPES)[number], on: boolean, minutes?: number) {
+    const next = structuredClone(config);
+    const list = next.joker.types.filter((t) => t.type !== type);
+    if (on) list.push({ type, ...(type === 'hunter_erfragen' ? {} : { minutes: minutes ?? (type === 'regeneration' ? 60 : 30) }) });
+    next.joker.types = JOKER_TYPES.flatMap((t) => list.filter((x) => x.type === t));
+    if (on) next.joker.enabled = true;
+    onChange(next);
+  }
 
   function setDuration(min: number) {
     const next = structuredClone(config);
@@ -44,7 +65,7 @@ export default function QuickSettings({ config, onChange }: Props) {
 
   return (
     <div className="stack">
-      <Box title="Spieler und Hunter">
+      <Box title="Spieler und Hunter" info={SETTING_HELP.roles}>
         <Stepper label="Spieler" value={config.roles.players_max} min={1} max={100} onChange={(v) => set('roles', 'players_max', v)} />
         <Stepper label="Hunter" value={config.roles.hunters_max} min={1} max={50} onChange={(v) => set('roles', 'hunters_max', v)} />
         <Choice
@@ -62,11 +83,11 @@ export default function QuickSettings({ config, onChange }: Props) {
         <Toggle label="Ich spiele selbst mit" value={g.host_can_play} onChange={(v) => set('game', 'host_can_play', v)} />
       </Box>
 
-      <Box title="Zeiten">
+      <Box title="Zeiten" info={SETTING_HELP.times}>
         <Duration label="Spieldauer insgesamt" value={g.duration_minutes} min={15} max={20160} onChange={setDuration} />
-        <Stepper label="Spieltage" value={g.days} min={1} max={14} onChange={setDays} />
+        <Stepper label="Spieltage" value={g.days} min={1} max={lim('game.days', 14)} onChange={setDays} />
         {multiDay && (
-          <Duration label="Länge eines Spieltags" value={g.day_length_minutes} min={10} max={1440}
+          <Duration label="Länge eines Spieltags" value={g.day_length_minutes} min={10} max={lim('game.day_length_minutes', 1440)}
             onChange={(v) => set('game', 'day_length_minutes', v)} />
         )}
         <Duration label="Vorsprung der Spieler" value={config.start.head_start_minutes} min={0} max={600}
@@ -76,12 +97,12 @@ export default function QuickSettings({ config, onChange }: Props) {
         <QuietHours config={config} onChange={onChange} />
       </Box>
 
-      <Box title="Pings (Standort der Spieler)">
-        <Duration label="Ping alle" value={config.ping.interval_minutes} min={1} max={720}
+      <Box title="Pings (Standort der Spieler)" info={SETTING_HELP.pings}>
+        <Duration label="Ping alle" value={config.ping.interval_minutes} min={1} max={lim('ping.interval_minutes', 720)}
           onChange={(v) => set('ping', 'interval_minutes', v)} />
-        <Duration label="Im Kern-Gebiet alle" value={config.ping.zone_overrides.kern ?? config.ping.interval_minutes} min={1} max={720}
+        <Duration label="Im Kern-Gebiet alle" value={config.ping.zone_overrides.kern ?? config.ping.interval_minutes} min={1} max={Math.min(720, g.duration_minutes)}
           onChange={(v) => set('ping', 'zone_overrides', { ...config.ping.zone_overrides, kern: v })} />
-        <Duration label="Erster Ping nach dem Vorsprung" value={config.ping.first_ping_delay_minutes} min={0} max={600}
+        <Duration label="Erster Ping nach dem Vorsprung" value={config.ping.first_ping_delay_minutes} min={0} max={lim('ping.first_ping_delay_minutes', 600)}
           onChange={(v) => set('ping', 'first_ping_delay_minutes', v)} />
         <Stepper label="Ungenauigkeit (m)" value={config.ping.precision_blur_m} min={0} max={1000} step={25}
           onChange={(v) => set('ping', 'precision_blur_m', v)} />
@@ -90,7 +111,7 @@ export default function QuickSettings({ config, onChange }: Props) {
           onChange={(v) => set('ping', 'reveal_schedule_to_taskforce', v)} />
       </Box>
 
-      <Box title="Speedhunt (Live-Jagd)">
+      <Box title="Speedhunt (Live-Jagd)" info={SETTING_HELP.speedhunt}>
         <Toggle label="Speedhunts erlaubt" value={config.speedhunt.enabled} onChange={(v) => set('speedhunt', 'enabled', v)} />
         {config.speedhunt.enabled && (
           <>
@@ -102,7 +123,7 @@ export default function QuickSettings({ config, onChange }: Props) {
             )}
             <Stepper label="Standort-Abfragen pro Speedhunt" value={config.speedhunt.queries} min={1} max={20}
               onChange={(v) => set('speedhunt', 'queries', v)} />
-            <Duration label="Speedhunt dauert höchstens" value={config.speedhunt.max_duration_minutes} min={5} max={480}
+            <Duration label="Speedhunt dauert höchstens" value={config.speedhunt.max_duration_minutes} min={5} max={lim('speedhunt.max_duration_minutes', 480)}
               onChange={(v) => set('speedhunt', 'max_duration_minutes', v)} />
             <Choice
               label="Wer löst Speedhunts aus?"
@@ -114,7 +135,7 @@ export default function QuickSettings({ config, onChange }: Props) {
         )}
       </Box>
 
-      <Box title="Fangen und Gewinnen">
+      <Box title="Fangen und Gewinnen" info={SETTING_HELP.catch}>
         <div className="field">
           <span>Wie wird gefangen?</span>
           <div className="chips">
@@ -135,9 +156,49 @@ export default function QuickSettings({ config, onChange }: Props) {
         <Toggle label="Exitpoint am Schluss (Spieler müssen hin)" value={config.exit.enabled} onChange={(v) => set('exit', 'enabled', v)} />
       </Box>
 
-      <Box title="Extras">
+      <Box title="Joker für die Spieler" info={SETTING_HELP.joker}>
+        <Toggle label="Joker im Spiel" value={j.enabled} onChange={(v) => set('joker', 'enabled', v)} />
+        {j.enabled && (
+          <>
+            <div className="field">
+              <span>Welche Joker gibt es?</span>
+              {JOKER_TYPES.map((t) => {
+                const cur = j.types.find((x) => x.type === t);
+                return (
+                  <div key={t} className="stack" style={{ gap: 4 }}>
+                    <Toggle label={JOKER_LABELS[t]} value={!!cur} onChange={(v) => setJokerType(t, v, cur?.minutes)} />
+                    {cur && t !== 'hunter_erfragen' && (
+                      <Duration label="Wirkt so lange" value={cur.minutes ?? 60} min={5} max={Math.min(1440, g.duration_minutes)}
+                        onChange={(v) => setJokerType(t, true, v)} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <Stepper label="Joker pro Spieler und Spieltag" value={j.per_day} min={0} max={5} onChange={(v) => set('joker', 'per_day', v)} />
+            <Stepper label="Höchstens gleichzeitig im Besitz" value={j.max_inventory} min={1} max={10} onChange={(v) => set('joker', 'max_inventory', v)} />
+            <Duration label="Verfügbar ab (nach Jagdbeginn)" value={j.available_after_minutes} min={0} max={lim('joker.available_after_minutes', 20160)}
+              onChange={(v) => set('joker', 'available_after_minutes', v)} />
+            <Choice
+              label="Welchen Joker bekommt man?"
+              value={j.selection}
+              options={[['zufall', 'Zufällig'], ['spieler_waehlt', 'Spieler wählt'], ['fest_pro_tag', 'Fest pro Tag']]}
+              onChange={(v) => set('joker', 'selection', v)}
+            />
+            {multiDay && (
+              <Choice
+                label="Unbenutzte Joker"
+                value={j.carry_over}
+                options={[['nie', 'Verfallen am Tagesende'], ['einen_tag', 'Einen Tag behalten'], ['unbegrenzt', 'Behalten']]}
+                onChange={(v) => set('joker', 'carry_over', v)}
+              />
+            )}
+          </>
+        )}
+      </Box>
+
+      <Box title="Extras" info={SETTING_HELP.extras}>
         <Toggle label="Budget für Spieler (Käufe verraten den Standort)" value={config.budget.enabled} onChange={(v) => set('budget', 'enabled', v)} />
-        <Toggle label="Joker" value={config.joker.enabled} onChange={(v) => set('joker', 'enabled', v)} />
         <Toggle label="Boni (z. B. Fake-Ping)" value={config.bonus.enabled} onChange={(v) => set('bonus', 'enabled', v)} />
         <Toggle label="Challenges" value={config.challenge.enabled} onChange={(v) => set('challenge', 'enabled', v)} />
         <Toggle label="Verschanzen-Regel (nicht zu lange am selben Ort)" value={config.hideout.enabled} onChange={(v) => set('hideout', 'enabled', v)} />
@@ -148,10 +209,10 @@ export default function QuickSettings({ config, onChange }: Props) {
   );
 }
 
-function Box({ title, children }: { title: string; children: ReactNode }) {
+function Box({ title, info, children }: { title: string; info?: { title: string; text: string }; children: ReactNode }) {
   return (
-    <div className="card stack">
-      <h2 style={{ margin: 0 }}>{title}</h2>
+    <div className="card stack" data-guide={`q-${title}`}>
+      <h2 style={{ margin: 0 }}>{title} {info && <Info title={info.title} text={info.text} />}</h2>
       {children}
     </div>
   );

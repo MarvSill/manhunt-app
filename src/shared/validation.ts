@@ -4,6 +4,7 @@
  * automatisch korrigiert (autoFixes) und dem Host als Hinweis gezeigt.
  */
 import type { GameConfig } from './config';
+import { fitTimes } from './timeRules';
 
 export type IssueLevel = 'error' | 'warning' | 'autofix';
 
@@ -50,10 +51,13 @@ export function quietMinutesPerDay(config: GameConfig): number {
 }
 
 export function validateConfig(input: GameConfig, ctx: ValidationContext = {}): ValidationResult {
-  const config = structuredClone(input);
+  // Zeiten zuerst stimmig machen: nichts darf ausserhalb der Spieldauer liegen.
+  const fit = fitTimes(input);
+  const config = fit.config;
   const issues: ConfigIssue[] = [];
   const add = (level: IssueLevel, code: string, message: string, ...paths: string[]) =>
     issues.push({ level, code, message, paths });
+  fit.fixes.forEach((f, n) => add('autofix', `time:${f.path}:${n}`, f.message, f.path));
 
   const duration = config.game.duration_minutes;
   const dayLength = config.game.day_length_minutes;

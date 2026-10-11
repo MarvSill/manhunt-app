@@ -7,13 +7,13 @@ interface Msg { id: number; channel: string; sender_id: string | null; sender_na
 
 export function channelsFor(s: GameState): { id: string; label: string; write: boolean }[] {
   const r = s.me.role;
-  const cfg = s.game.config;
-  const list: { id: string; label: string; write: boolean }[] = [{ id: 'ankuendigung', label: 'Ankündigungen', write: r === 'gm' || s.game.host }];
+  // Ankündigungen schreibt nur die Spielleitung; Spieler schreiben nie mit anderen Spielern.
+  const leader = r === 'gm' || (s.game.host && !['spieler', 'hunter', 'zentrale'].includes(r));
+  const list: { id: string; label: string; write: boolean }[] = [{ id: 'ankuendigung', label: 'Ankündigungen', write: leader }];
   if (r === 'hunter' || r === 'zentrale' || r === 'gm') list.push({ id: 'taskforce', label: 'Taskforce', write: true });
-  if (r === 'spieler' && cfg.communication.player_to_player) list.push({ id: 'spieler', label: 'Spieler', write: true });
   if (r === 'gm') {
     for (const p of s.participants.filter((x) => x.role !== 'gm')) list.push({ id: `gm:${p.id}`, label: `An ${p.name}`, write: true });
-  } else {
+  } else if (s.participants.some((p) => p.role === 'gm')) {
     list.push({ id: `gm:${s.me.id}`, label: 'Spielleitung', write: true });
   }
   return list;
@@ -99,6 +99,8 @@ export default function Chat({ s }: { s: GameState }) {
       <select aria-label="Kanal" value={cur.id} onChange={(e) => setCh(e.target.value)}>
         {chans.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
       </select>
+      {!cur.write && <div className="muted small">Hier schreibt nur die Spielleitung.</div>}
+      {s.me.role === 'spieler' && <div className="muted small">Spieler können nicht miteinander schreiben, nur mit der Spielleitung.</div>}
       <MessageList filter={{ column: 'game_id', value: s.game.id }} channel={cur.id} onSend={cur.write ? (b) => api.send(s.game.id, cur.id, b) : null} />
     </div>
   );

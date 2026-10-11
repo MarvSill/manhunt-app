@@ -1,3 +1,4 @@
+import { fitTimes } from './timeRules';
 import { describe, expect, it } from 'vitest';
 import { defaultConfig, gameConfigSchema, mergeConfig, parseConfig } from './config';
 import { PRESETS, configFromPreset } from './presets';
@@ -87,11 +88,12 @@ describe('Presets', () => {
 });
 
 describe('Validierung (Kapitel 25)', () => {
-  it('Akzeptanztest 40: Intervall 240 bei Spieldauer 180 blockiert', () => {
-    const c = mergeConfig(defaultConfig(), { game: { duration_minutes: 180 }, ping: { interval_minutes: 240 } });
+  it('Akzeptanztest 40 (ergänzt): Intervall 240 bei Spieldauer 180 wird automatisch angepasst', () => {
+    const c = mergeConfig(defaultConfig(), { game: { duration_minutes: 180, days: 1 }, ping: { interval_minutes: 240 } });
     const r = validateConfig(c);
-    expect(r.canStart).toBe(false);
-    expect(r.issues.find((i) => i.code === 'no_ping')?.message).toBe('Bei diesem Intervall gibt es keinen einzigen Ping.');
+    expect(r.config.ping.interval_minutes).toBeLessThan(180);
+    expect(r.issues.some((i) => i.level === 'autofix' && i.paths.includes('ping.interval_minutes'))).toBe(true);
+    expect(r.issues.some((i) => i.code === 'no_ping')).toBe(false);
   });
 
   it('braucht mindestens einen Spieler und einen Hunter', () => {
@@ -99,9 +101,9 @@ describe('Validierung (Kapitel 25)', () => {
     expect(validateConfig(defaultConfig(), { players: 3, hunters: 2 }).canStart).toBe(true);
   });
 
-  it('Speedhunt länger als Spieltag ist ein Fehler', () => {
+  it('Speedhunt länger als Spieltag wird gekürzt', () => {
     const c = mergeConfig(defaultConfig(), { game: { day_length_minutes: 60 }, speedhunt: { max_duration_minutes: 90 } });
-    expect(validateConfig(c).issues.some((i) => i.code === 'speedhunt_longer_than_day' && i.level === 'error')).toBe(true);
+    expect(validateConfig(c).config.speedhunt.max_duration_minutes).toBe(60);
   });
 
   it('Speedhunt durch Spielleitung ohne menschliche Spielleitung ist ein Fehler', () => {
@@ -122,9 +124,9 @@ describe('Validierung (Kapitel 25)', () => {
     expect(validateConfig(c, { hasMinors: false }).canStart).toBe(true);
   });
 
-  it('Exit-Bekanntgabe vor Spielbeginn ist ein Fehler', () => {
+  it('Exit-Bekanntgabe vor Spielbeginn wird angepasst', () => {
     const c = mergeConfig(defaultConfig(), { game: { duration_minutes: 60 }, ping: { interval_minutes: 10 }, exit: { reveal_minutes_before_end: 120 } });
-    expect(validateConfig(c).issues.some((i) => i.code === 'exit_reveal_before_start')).toBe(true);
+    expect(validateConfig(c).config.exit.reveal_minutes_before_end).toBe(60);
   });
 
   it('warnt bei kurzen Spieltagen mit Ausrichtung auf volle Stunden', () => {
@@ -154,5 +156,34 @@ describe('Eigene Zusatzregeln', () => {
   it('lehnt leere und zu viele Regeln ab', () => {
     expect(() => parseConfig({ extras: { rules: [' '] } })).toThrow();
     expect(() => parseConfig({ extras: { rules: Array(31).fill('x') } })).toThrow();
+  });
+});
+
+describe('Zeitlogik', () => {
+  it('Vorlagen brauchen keine Korrektur', () => {
+    for (const p of PRESETS) expect(fitTimes(mergeConfig(defaultConfig(), p.patch)).fixes.map((f) => `${p.id}: ${f.message}`)).toEqual([]);
+  });
+
+  it('90 min Spiel: Verkleinerung, Pings und Meldungen passen in die Spieldauer', () => {
+    const c = mergeConfig(defaultConfig(), {
+      game: { duration_minutes: 90, days: 1, day_length_minutes: 90 },
+      zone: { shrink_mode: 'auto', shrink_every_minutes: 0, shrink_announce_minutes: 180 },
+      ping: { interval_minutes: 120, first_ping_delay_minutes: 100 },
+      speedhunt: { max_duration_minutes: 200 },
+      exit: { reveal_minutes_before_end: 120 },
+      joker: { enabled: true, available_after_minutes: 300, types: [{ type: 'regeneration', minutes: 240 }] },
+    });
+    const { config: f, fixes } = fitTimes(c);
+    expect(f.zone.shrink_every_minutes).toBeGreaterThan(0);
+    expect(f.zone.shrink_every_minutes).toBeLessThanOrEqual(45);
+    expect(f.zone.shrink_announce_minutes).toBeLessThanOrEqual(f.zone.shrink_every_minutes);
+    expect(f.ping.first_ping_delay_minutes + f.ping.interval_minutes).toBeLessThan(90);
+    expect(f.speedhunt.max_duration_minutes).toBeLessThanOrEqual(90);
+    expect(f.exit.reveal_minutes_before_end).toBeLessThanOrEqual(90);
+    expect(f.joker.available_after_minutes).toBeLessThan(90);
+    expect(f.joker.types[0].minutes).toBeLessThanOrEqual(90);
+    expect(fixes.length).toBeGreaterThan(5);
+    // Nochmals anwenden ändert nichts mehr.
+    expect(fitTimes(f).fixes).toEqual([]);
   });
 });

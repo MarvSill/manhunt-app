@@ -37,7 +37,7 @@ export default function PlayerPanel({ s, now, act, pickFake }: PanelProps & { pi
         <p className="muted">
           {me.state === 'gefangen' && 'Du wurdest gefangen. Du kannst weiter zuschauen.'}
           {me.state === 'im_ziel' && 'Du hast den Exitpoint erreicht. Warte auf das Spielende.'}
-          {me.state === 'notfall' && 'Die Spielleitung ist informiert. Die Jagd auf dich ist ausgesetzt.'}
+          {me.state === 'notfall' && 'Alle Hunter sind informiert. Die Jagd auf dich ist ausgesetzt. Beenden kannst du den Notfall oben.'}
           {['disqualifiziert', 'aufgegeben', 'verloren'].includes(me.state) && 'Du nimmst nicht mehr am Spiel teil.'}
         </p>
       </Section>

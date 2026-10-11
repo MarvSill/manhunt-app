@@ -1,6 +1,10 @@
 import { useMemo, useState } from 'react';
 import type { GameConfig } from '../shared/config';
 import { configSections, optionLabel, type FieldMeta } from '../shared/schemaMeta';
+import { timeLimits } from '../shared/timeRules';
+
+/** Felder, die nicht mehr einstellbar sind (fest geregelt). */
+const HIDDEN = new Set(['communication.player_to_player', 'out_of_bounds.live_visible']);
 
 interface Props {
   config: GameConfig;
@@ -17,7 +21,11 @@ function getValue(config: GameConfig, f: FieldMeta): unknown {
 }
 
 export default function ConfigEditor({ config, baseline, readOnly, problemPaths, onChange }: Props) {
-  const sections = useMemo(() => configSections().filter((s) => s.section !== 'extras'), []);
+  const sections = useMemo(
+    () => configSections().filter((s) => s.section !== 'extras').map((s) => ({ ...s, fields: s.fields.filter((f) => !HIDDEN.has(f.path)) })).filter((s) => s.fields.length > 0),
+    [],
+  );
+  const limits = useMemo(() => timeLimits(config), [config]);
   const [query, setQuery] = useState('');
   const q = query.trim().toLowerCase();
 
@@ -57,7 +65,7 @@ export default function ConfigEditor({ config, baseline, readOnly, problemPaths,
               {fields.map((f) => (
                 <Field
                   key={f.path}
-                  field={f}
+                  field={limits[f.path] ? { ...f, max: Math.min(f.max ?? Infinity, limits[f.path].max), hint: limits[f.path].reason } : f}
                   value={getValue(config, f)}
                   changed={!!baseline && JSON.stringify(getValue(config, f)) !== JSON.stringify(getValue(baseline, f))}
                   problem={!!problemPaths?.has(f.path)}
@@ -74,7 +82,7 @@ export default function ConfigEditor({ config, baseline, readOnly, problemPaths,
 }
 
 interface FieldProps {
-  field: FieldMeta;
+  field: FieldMeta & { hint?: string };
   value: unknown;
   changed: boolean;
   problem: boolean;
@@ -107,6 +115,7 @@ function Field({ field: f, value, changed, problem, readOnly, onChange }: FieldP
               ({f.min} bis {f.max})
             </span>
           )}
+          {f.hint && <span className="muted small"> · höchstens {f.max}, weil {f.hint}</span>}
         </span>
         {f.kind === 'number' && <NumberInput field={f} value={value as number} readOnly={readOnly} onChange={onChange} />}
         {f.kind === 'text' && (

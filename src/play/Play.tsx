@@ -7,6 +7,7 @@ import { errorText } from '../lib/supabase';
 import { useTracker } from '../lib/tracker';
 import { useGameState, useNow } from '../lib/useGame';
 import Chat from './Chat';
+import EmergencyBox from './EmergencyBox';
 import { colorFor, Confirm, nameOf } from './common';
 import GmPanel from './GmPanel';
 import HunterPanel from './HunterPanel';
@@ -214,6 +215,7 @@ export default function PlayPage() {
 
       {ended ? <Result s={s} zones={zones} /> : (
         <>
+          <EmergencyBox s={s} act={act} showMap={() => setTab('karte')} />
           <div className="tabs">
             {(['karte', 'aktionen', 'meldungen', 'chat'] as Tab[]).map((t) => (
               <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
@@ -277,11 +279,10 @@ export default function PlayPage() {
 
           {role !== 'zuschauer' && s.me.state !== 'notfall' && (
             <div style={{ marginTop: 16 }}>
-              <Confirm className="danger block" label="NOTFALL" confirm="Notfall melden? Die Spielleitung wird alarmiert."
-                onYes={() => act(() => api.emergency(g.id, pos?.lat, pos?.lng), 'Notfall gemeldet. Bei Gefahr: 112 anrufen.')} />
+              <Confirm className="danger block" label="NOTFALL" confirm="Notfall melden? Alle Hunter und die Spielleitung werden sofort alarmiert. Falls es ein Versehen war, kannst du ihn danach wieder beenden."
+                onYes={() => act(() => api.emergency(g.id, pos?.lat, pos?.lng), 'Notfall gemeldet. Bei Gefahr: 117 (Polizei) oder 112 anrufen.')} />
             </div>
           )}
-          {s.me.state === 'notfall' && <a className="button danger block" href="tel:112" style={{ marginTop: 16 }}>112 anrufen</a>}
         </>
       )}
     </div>
