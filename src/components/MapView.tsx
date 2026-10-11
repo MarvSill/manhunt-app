@@ -1,4 +1,5 @@
 import L from 'leaflet';
+import { addMapButtons } from '../lib/mapControls';
 import 'leaflet/dist/leaflet.css';
 import { useEffect, useRef } from 'react';
 import { pointOnFeature } from '@turf/turf';
@@ -53,7 +54,11 @@ export function addZones(layer: L.LayerGroup, zones: MapFeature[], day?: number)
     let l: L.Layer;
     if (f.geometry.type === 'Point') {
       const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates;
-      l = L.circle([lat, lng], { radius: f.properties.radius_m || (k === 'hq' ? 100 : 30), ...zoneStyle(f, day), fillOpacity: k === 'exit' ? 0.5 : 0.15, weight: k === 'exit' ? 4 : 2 });
+      // Punkt mit Symbol; der Radius nur gestrichelt darum.
+      l = L.marker([lat, lng], { icon: pointIcon(k) });
+      if (k !== 'treffpunkt') {
+        layer.addLayer(L.circle([lat, lng], { radius: f.properties.radius_m || (k === 'hq' ? 100 : 30), color: info.color, weight: 2, dashArray: '6 6', fill: false, interactive: false }));
+      }
     } else {
       l = L.geoJSON(f as GeoJSON.Feature, { style: () => zoneStyle(f, day) });
     }
@@ -65,6 +70,19 @@ export function addZones(layer: L.LayerGroup, zones: MapFeature[], day?: number)
     (l as L.Path).bindTooltip(esc(`${prefix}${name}${dayText}`), permanent ? { permanent: true, direction: 'top' } : { sticky: true });
     layer.addLayer(l);
   }
+}
+
+const POINT_ICON: Record<string, string> = { hq: '🚓', treffpunkt: '📍', exit: '🏁' };
+
+/** Punkt-Symbol für HQ, Treffpunkt und Exit (gut antipp- und verschiebbar). */
+export function pointIcon(kind: string): L.DivIcon {
+  const color = ZONE_INFO[kind as keyof typeof ZONE_INFO]?.color ?? '#fff';
+  return L.divIcon({
+    className: '',
+    html: `<div class="point-pin" style="border-color:${color}">${POINT_ICON[kind] ?? '•'}</div>`,
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+  });
 }
 
 /** Symbol in der Mitte einer Gefahren- oder Schutzzone, damit man sie sofort erkennt. */
@@ -121,6 +139,13 @@ export default function MapView({ zones, markers, lines, onClick, fitKey, height
     zoneLayer.current = L.layerGroup().addTo(m);
     markerLayer.current = L.layerGroup().addTo(m);
     m.on('click', (e: L.LeafletMouseEvent) => clickRef.current?.(e.latlng.lat, e.latlng.lng));
+    addMapButtons(m, {
+      wrap: () => el.current?.parentElement ?? null,
+      fit: () => {
+        const ls = zoneLayer.current?.getLayers() ?? [];
+        return ls.length ? L.featureGroup(ls).getBounds() : null;
+      },
+    });
     map.current = m;
     fitted.current = undefined;
     centered.current = false;
@@ -183,5 +208,5 @@ export default function MapView({ zones, markers, lines, onClick, fitKey, height
     }
   }, [markers, lines]);
 
-  return <div ref={el} className="map" style={{ height }} />;
+  return <div className="map-wrap"><div ref={el} className="map" style={{ height }} /></div>;
 }

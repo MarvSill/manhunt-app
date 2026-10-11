@@ -25,20 +25,7 @@ export default function GmPanel(props: PanelProps & { pickZone: () => void; pick
 
   return (
     <div className="stack">
-      {s.emergencies.map((e) => (
-        <div key={e.id} className="notice error stack">
-          <strong>NOTFALL: {nameOf(s, e.participant_id)} seit {clock(e.at)}</strong>
-          {e.lat != null && <span className="small">Standort: {e.lat.toFixed(5)}, {e.lng?.toFixed(5)} (auf der Karte)</span>}
-          {contact[e.participant_id] && <span>Notfallkontakt: {contact[e.participant_id]}</span>}
-          <div className="row">
-            <button className="small" onClick={() => act(async () => {
-              const c = await api.emergencyContact(g.id, e.participant_id);
-              setContact({ ...contact, [e.participant_id]: c ? `${c.name}, ${c.phone}` : 'keiner' });
-            })}>Notfallkontakt zeigen</button>
-            <button className="small primary" onClick={() => act(() => api.emergencyResolve(e.id), 'Notfall erledigt.')}>Erledigt</button>
-          </div>
-        </div>
-      ))}
+      {/* Notfälle stehen oben in der roten Box (für Spielleitung und Hunter). */}
 
       <Section title="Spielsteuerung" badge={g.is_test ? <span className="badge">Probelauf</span> : undefined}>
         <div className="row">

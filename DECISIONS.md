@@ -86,3 +86,10 @@ Abweichungen von der Spezifikation und Annahmen, wo sie nichts festlegt.
 - Der Editor führt Schritt für Schritt: Spielfeld (Kreis, Rechteck, eigene Form), Treffpunkt, HQ, Exit, Verkleinerung mit Vorschau, Gefahrenzonen, weitere Zonen.
 - Sektion, Startzone, Center, Kern, Aussen, Sicher und Sperrzone müssen im Spielfeld (Phase 1) liegen, ein Phasen-Spielfeld im vorherigen. Was hinausragt, wird beim Zeichnen zugeschnitten (Turf). Treffpunkt und Exit müssen im Feld liegen; `start_game` prüft das nochmals.
 - Sperrzonen haben eine Art (Strasse, Gleise, Gewässer …) und werden rot schraffiert mit Warnsymbol gezeigt. Vorschläge kommen aus OpenStreetMap (Overpass-API), Linien werden als Band mit Breite übernommen.
+
+## Runde 3 (Migration 0009)
+- Zeitlogik in `src/shared/timeRules.ts`: Höchstwerte für Eingaben (`timeLimits`) und automatische Korrektur (`fitTimes`), eingebaut in `validateConfig` als "autofix". Vor dem Start speichert die Lobby korrigierte Werte. Regeln deaktivierter Funktionen werden nicht geprüft.
+- Notfall: an alle Hunter (und Spielleitung); Hunter sehen den Notfallkontakt nur bei offenem Notfall; die Person beendet Fehlalarme selbst. Nummern 117/144/112.
+- Ausserhalb der Zone immer live (Option `out_of_bounds.live_visible` wird ignoriert und ist ausgeblendet).
+- Chat: Kanal "spieler" nur noch für die Spielleitung, Ankündigungen nur Spielleitung (oder ein nicht mitspielender Host). `communication.player_to_player` ist ausgeblendet.
+- Joker: `joker.available_after_minutes`; Vergabe einmal pro Spieltag über `state_json.joker_day` im Tick.

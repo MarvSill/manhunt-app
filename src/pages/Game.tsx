@@ -4,6 +4,8 @@ import IssueList from '../components/IssueList';
 import { useAuth } from '../lib/auth';
 import {
   ROLE_LABELS,
+  diffConfig,
+  updateConfig,
   STATUS_LABELS,
   getGame,
   getRoster,
@@ -84,7 +86,7 @@ export default function GamePage() {
       roster.filter((r) => !r.ready).length,
     );
     const issues = [...lobby.map((i) => ({ ...i, paths: [] })), ...validation.issues];
-    return { issues, canStart: !issues.some((i) => i.level === 'error'), players: players.length, hunters: hunters.length };
+    return { issues, canStart: !issues.some((i) => i.level === 'error'), players: players.length, hunters: hunters.length, fixed: validation.config };
   }, [config, roster]);
 
   async function run(action: () => Promise<void>) {
@@ -117,6 +119,11 @@ export default function GamePage() {
     setStarting(true);
     setError(null);
     try {
+      // Automatisch korrigierte Zeiten vor dem Start speichern, damit die Engine stimmige Werte hat.
+      if (config && checks) {
+        const changes = diffConfig(config, checks.fixed);
+        if (changes.length) await updateConfig(game.id, checks.fixed, changes);
+      }
       await api.start(game.id, test);
       navigate(`/spiel/${game.id}/live`);
     } catch (err) {

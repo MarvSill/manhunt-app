@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import ConfigEditor from '../components/ConfigEditor';
+import Guide, { type GuideStep } from '../components/Guide';
 import ExtraRules from '../components/ExtraRules';
 import IssueList from '../components/IssueList';
 import QuickSettings from '../components/QuickSettings';
@@ -17,6 +18,29 @@ function presetConfig(id: string): GameConfig {
   return c;
 }
 
+function guideSteps(custom: boolean): GuideStep[] {
+  return [
+    { title: 'Willkommen!', text: 'Ich zeige dir Schritt für Schritt, wie du ein Spiel erstellst. Du kannst den Helfer jederzeit schliessen und später über "❓ Helfer" wieder öffnen.' },
+    { target: 'mode', title: 'Vorlage oder alles selbst', text: '"Vorlage" nimmt fertige Regeln (z. B. 3 Stunden in der Stadt). Mit "Alles selbst einstellen" wählst du Spieler, Hunter, Zeiten, Pings und Joker selbst.' },
+    { target: 'name', title: 'Name', text: 'Gib dem Spiel einen Namen, z. B. den Ort. Den sehen alle, die mitspielen.' },
+    { target: 'start', title: 'Startzeit', text: 'Freiwillig. Gestartet wird das Spiel später von dir in der Lobby, wenn alle bereit sind.' },
+    ...(custom
+      ? [
+          { target: 'q-Spieler und Hunter', title: 'Spieler und Hunter', text: 'Wie viele Spieler sich verstecken und wie viele Hunter jagen. Die Spielleitung kann automatisch (App) oder ein Mensch sein.' },
+          { target: 'q-Zeiten', title: 'Zeiten', text: 'Spieldauer, Vorsprung und jagdfreie Zeiten. Alles andere (Verkleinerung, Pings, Joker …) passt die App automatisch an die Spieldauer an.' },
+          { target: 'q-Pings (Standort der Spieler)', title: 'Pings', text: 'Wie oft die Hunter sehen, wo die Spieler sind. Kürzer = schwerer für die Spieler.' },
+          { target: 'q-Speedhunt (Live-Jagd)', title: 'Speedhunt', text: 'Kurze Live-Jagden auf einen Spieler. Mit wenigen Speedhunts pro Tag bleibt es spannend.' },
+          { target: 'q-Joker für die Spieler', title: 'Joker', text: 'Wähle, welche Joker es gibt, wie viele pro Tag und ab wann sie verfügbar sind. Die Spieler setzen sie im Spiel unter "Aktionen" ein.' },
+          { target: 'issues', title: 'Prüfung', text: 'Hier steht, was die App automatisch angepasst hat und ob noch etwas fehlt.' },
+        ]
+      : [
+          { target: 'presets', title: 'Vorlage wählen', text: 'Tippe eine Vorlage an. Darunter siehst du die wichtigsten Zeiten. Mit dem ⓘ und "Alle Regeln anpassen" kannst du alles ändern.' },
+          { target: 'issues', title: 'Prüfung', text: 'Hier steht, was die App automatisch angepasst hat und ob noch etwas fehlt.' },
+        ]),
+    { target: 'create', title: 'Spiel erstellen', text: 'Danach kommst du in die Lobby: dort zeichnest du die Karte (mit Assistent), schickst den Code an deine Freunde, verteilst die Rollen und startest.' },
+  ];
+}
+
 export default function NewGamePage() {
   const navigate = useNavigate();
   const custom = useLocation().pathname.endsWith('/eigenes');
@@ -31,6 +55,7 @@ export default function NewGamePage() {
   const [editError, setEditError] = useState<string | null>(null);
   const [groups, setGroups] = useState<{ id: string; name: string }[]>([]);
   const [groupId, setGroupId] = useState('');
+  const [guide, setGuide] = useState(false);
 
   useEffect(() => {
     void db().from('groups').select('id,name').then(({ data }) => setGroups((data ?? []) as { id: string; name: string }[]));
@@ -87,17 +112,19 @@ export default function NewGamePage() {
       <div className="topbar">
         <Link to="/" className="button ghost small">←</Link>
         <h1>{custom ? 'Eigenes Spiel' : 'Spiel erstellen'}</h1>
+        <button type="button" className="small help-btn" onClick={() => setGuide(true)}>❓ Helfer</button>
       </div>
-      <div className="mode-switch" style={{ marginBottom: 12 }}>
+      {guide && <Guide steps={guideSteps(custom)} onClose={() => setGuide(false)} />}
+      <div className="mode-switch" data-guide="mode" style={{ marginBottom: 12 }}>
         <Link to="/neu" replace className={`button${custom ? '' : ' primary'}`}>Vorlage</Link>
         <Link to="/neu/eigenes" replace className={`button${custom ? ' primary' : ''}`}>Alles selbst einstellen</Link>
       </div>
       <form className="stack" onSubmit={submit}>
-        <label className="field">
+        <label className="field" data-guide="name">
           Name des Spiels
           <input required maxLength={60} value={name} onChange={(e) => setName(e.target.value)} placeholder="z. B. Zürich Altstadt" />
         </label>
-        <label className="field">
+        <label className="field" data-guide="start">
           Geplanter Start (optional)
           <input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} />
         </label>
@@ -121,21 +148,21 @@ export default function NewGamePage() {
                 {PRESETS.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </label>
-            <QuickSettings config={config} onChange={edit} />
+            <QuickSettings config={result.config} onChange={edit} />
             <ExtraRules rules={config.extras.rules} onChange={(rules) => edit({ ...config, extras: { ...config.extras, rules } })} />
-            <IssueList issues={result.issues} />
+            <div data-guide="issues"><IssueList issues={result.issues} /></div>
             <details className="section">
               <summary>Alle weiteren Regeln ({'>'}150 Einstellungen)</summary>
               <div>
                 {editError && <div className="notice error">{editError}</div>}
-                <ConfigEditor config={config} baseline={baseline} problemPaths={problemPaths} onChange={edit} />
+                <ConfigEditor config={result.config} baseline={baseline} problemPaths={problemPaths} onChange={edit} />
               </div>
             </details>
           </>
         ) : (
           <>
           <h2>Voreinstellung</h2>
-          <div className="stack">
+          <div className="stack" data-guide="presets">
             {PRESETS.map((p) => (
               <button
                 type="button"
@@ -156,29 +183,29 @@ export default function NewGamePage() {
           </div>
 
           <div className="card small">
-            <div>Dauer: {formatMinutes(config.game.duration_minutes)} ({config.game.days} Spieltage à {formatMinutes(config.game.day_length_minutes)})</div>
-            <div>Vorsprung: {formatMinutes(config.start.head_start_minutes)} · Ping alle {formatMinutes(config.ping.interval_minutes)}</div>
+            <div>Dauer: {formatMinutes(result.config.game.duration_minutes)} ({result.config.game.days} Spieltage à {formatMinutes(result.config.game.day_length_minutes)})</div>
+            <div>Vorsprung: {formatMinutes(result.config.start.head_start_minutes)} · Ping alle {formatMinutes(result.config.ping.interval_minutes)}</div>
             <div>
-              Speedhunts: {config.speedhunt.enabled ? `${config.speedhunt.quota_per_day.join('/')} am Tag 1, danach ${config.speedhunt.quota_default}, je ${config.speedhunt.queries} Abfragen` : 'aus'}
+              Speedhunts: {result.config.speedhunt.enabled ? `${result.config.speedhunt.quota_per_day.join('/')} am Tag 1, danach ${result.config.speedhunt.quota_default}, je ${result.config.speedhunt.queries} Abfragen` : 'aus'}
             </div>
           </div>
 
-          <IssueList issues={result.issues} />
+          <div data-guide="issues"><IssueList issues={result.issues} /></div>
 
-          <button type="button" onClick={() => setShowRules((s) => !s)}>
+          <button type="button" data-guide="rules" onClick={() => setShowRules((s) => !s)}>
             {showRules ? 'Regeln ausblenden' : 'Alle Regeln anpassen'}
           </button>
           {showRules && (
             <>
               {editError && <div className="notice error">{editError}</div>}
-              <ConfigEditor config={config} baseline={baseline} problemPaths={problemPaths} onChange={edit} />
+              <ConfigEditor config={result.config} baseline={baseline} problemPaths={problemPaths} onChange={edit} />
             </>
           )}
           </>
         )}
 
         {error && <div className="notice error">{error}</div>}
-        <button className="primary block" disabled={busy || !name.trim()}>
+        <button className="primary block" data-guide="create" disabled={busy || !name.trim()}>
           Spiel erstellen
         </button>
         {!result.canStart && (

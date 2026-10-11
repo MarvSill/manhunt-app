@@ -248,6 +248,7 @@ export const gameConfigSchema = z.object({
       selection: choice(['spieler_waehlt', 'zufall', 'fest_pro_tag'], 'zufall', 'Vergabe'),
       carry_over: choice(['nie', 'einen_tag', 'unbegrenzt'], 'einen_tag', 'Aufheben'),
       max_inventory: int(2, 1, 10, 'Max. im Besitz'),
+      available_after_minutes: int(0, 0, 20160, 'Verfügbar ab (min nach Jagdbeginn)'),
       types: z
         .array(jokerTypeSchema)
         .default([
